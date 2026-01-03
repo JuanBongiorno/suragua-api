@@ -21,7 +21,7 @@ function showScreen(id) {
     document.getElementById(id).classList.add('active');
 }
 
-// LOGIN: AQUÍ SE DECIDE SI BLOQUEAR O NO
+// LOGIN Y BLOQUEO DE ID
 document.getElementById('loginForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const user = document.getElementById('username').value.toUpperCase();
@@ -34,11 +34,11 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
 
         if (idQR) {
             idDispenserInput.value = idQR;
-            idDispenserInput.readOnly = true; // BLOQUEO PARA QR
+            idDispenserInput.readOnly = true;
             idDispenserInput.style.backgroundColor = "#e9ecef";
             showScreen('mantenimientoScreen');
         } else {
-            idDispenserInput.readOnly = false; // LIBRE PARA MANUAL
+            idDispenserInput.readOnly = false;
             idDispenserInput.style.backgroundColor = "#ffffff";
             showScreen('optionsScreen');
         }
@@ -47,15 +47,24 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
     }
 });
 
+// LIMPIEZA TOTAL AL ABRIR FORMULARIOS
 document.getElementById('btnMantenimiento').onclick = () => {
+    const form = document.getElementById('mantenimientoForm');
+    form.reset(); // Limpia campos
     idDispenserInput.value = "";
-    idDispenserInput.readOnly = false; // SIEMPRE LIBRE SI ENTRA POR MENÚ
+    idDispenserInput.readOnly = false;
     idDispenserInput.style.backgroundColor = "#ffffff";
     document.getElementById('fechaMantenimiento').valueAsDate = new Date();
+    document.getElementById('mantenimientoMessage').textContent = '';
     showScreen('mantenimientoScreen');
 };
 
-document.getElementById('btnBidones').onclick = () => showScreen('bidonesScreen');
+document.getElementById('btnBidones').onclick = () => {
+    document.getElementById('bidonesForm').reset();
+    document.getElementById('bidonesMessage').textContent = '';
+    showScreen('bidonesScreen');
+};
+
 document.getElementById('btnLogout').onclick = () => { window.location.href = window.location.pathname; };
 document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('optionsScreen');
 document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('optionsScreen');
@@ -92,8 +101,10 @@ async function intentarSincronizar() {
 
 window.addEventListener('online', intentarSincronizar);
 
+// ENVÍO DE BIDONES CON LIMPIEZA FORZADA
 document.getElementById('bidonesForm').addEventListener('submit', (e) => {
     e.preventDefault();
+    const form = e.target;
     guardarLocal({
         sheet: 'Entregas', usuario: loggedInUser,
         cantidadEntregados: document.getElementById('cantidadEntregados').value,
@@ -102,12 +113,19 @@ document.getElementById('bidonesForm').addEventListener('submit', (e) => {
         sector: document.getElementById('sector').value,
         observaciones: document.getElementById('observacionesBidones').value
     });
-    document.getElementById('bidonesMessage').textContent = 'Guardado Offline...';
-    setTimeout(() => { showScreen('optionsScreen'); document.getElementById('bidonesMessage').textContent = ''; }, 1500);
+    
+    document.getElementById('bidonesMessage').textContent = 'Datos guardados y enviando...';
+    form.reset(); // LIMPIEZA INMEDIATA
+    setTimeout(() => { 
+        document.getElementById('bidonesMessage').textContent = '';
+        showScreen('optionsScreen'); 
+    }, 1500);
 });
 
+// ENVÍO DE MANTENIMIENTO CON LIMPIEZA FORZADA
 document.getElementById('mantenimientoForm').addEventListener('submit', (e) => {
     e.preventDefault();
+    const form = e.target;
     guardarLocal({
         sheet: 'Mantenimiento', usuario: loggedInUser,
         idDispenser: idDispenserInput.value,
@@ -116,6 +134,15 @@ document.getElementById('mantenimientoForm').addEventListener('submit', (e) => {
         sectorDispenser: document.getElementById('sectorDispenser').value,
         observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value
     });
-    document.getElementById('mantenimientoMessage').textContent = 'Guardado Offline...';
-    setTimeout(() => { showScreen('optionsScreen'); document.getElementById('mantenimientoMessage').textContent = ''; }, 1500);
+    
+    document.getElementById('mantenimientoMessage').textContent = 'Datos guardados y enviando...';
+    
+    // LIMPIEZA INMEDIATA DE TODOS LOS CAMPOS
+    form.reset(); 
+    idDispenserInput.value = "";
+    
+    setTimeout(() => { 
+        document.getElementById('mantenimientoMessage').textContent = '';
+        showScreen('optionsScreen'); 
+    }, 1500);
 });

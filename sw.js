@@ -1,4 +1,4 @@
-const CACHE_NAME = 'suragua-vFINAL';
+const CACHE_NAME = 'suragua-vVERSION_FINAL_CORREGIDA';
 const ASSETS = ['./', './index.html', './style.css', './script.js', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png'];
 
 self.addEventListener('install', (e) => {
