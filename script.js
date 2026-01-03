@@ -4,6 +4,7 @@ const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzbjhRN
 const VALID_USERNAME = '1234';
 const VALID_PASSWORD = '1234';
 let loggedInUser = '';
+let vinoDeQR = false; // Variable para saber si bloquear el ID o no
 
 // 1. REGISTRO DEL SERVICE WORKER (Para trabajar sin internet)
 if ('serviceWorker' in navigator) {
@@ -34,13 +35,18 @@ function showScreen(name) {
     screens[name].classList.add('active');
 }
 
-// 4. LÓGICA DE URL (ID DISPENSER)
-function getDispenserIdFromUrl() {
+// 4. LÓGICA DE DETECCIÓN DE QR
+function detectarQR() {
     const params = new URLSearchParams(window.location.search);
-    return params.get('idDispenser');
+    const id = params.get('idDispenser');
+    if (id) {
+        localStorage.setItem('tempDispenserId', id);
+        vinoDeQR = true;
+    } else {
+        vinoDeQR = false;
+    }
 }
-const idDesdeUrl = getDispenserIdFromUrl();
-if (idDesdeUrl) localStorage.setItem('tempDispenserId', idDesdeUrl);
+detectarQR();
 
 // 5. LOGIN
 document.getElementById('loginForm').addEventListener('submit', (e) => {
@@ -51,11 +57,16 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
     if (user === VALID_USERNAME && pass === VALID_PASSWORD) {
         loggedInUser = user;
         const tempId = localStorage.getItem('tempDispenserId');
-        if (tempId) {
+        
+        if (tempId && vinoDeQR) {
+            // SI VIENE DE QR: Pone el ID y lo bloquea
             idDispenserInput.value = tempId;
+            idDispenserInput.readOnly = true;
+            idDispenserInput.style.backgroundColor = "#e9ecef"; // Color gris de bloqueado
             showScreen('mantenimiento');
             localStorage.removeItem('tempDispenserId');
         } else {
+            // SI ENTRA NORMAL: Va a opciones
             showScreen('options');
         }
     } else {
@@ -64,13 +75,31 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
 });
 
 // 6. BOTONES NAVEGACIÓN
-document.getElementById('btnBidones').onclick = () => { showScreen('bidones'); document.getElementById('bidonesForm').reset(); };
+document.getElementById('btnBidones').onclick = () => { 
+    showScreen('bidones'); 
+    document.getElementById('bidonesForm').reset(); 
+};
+
 document.getElementById('btnMantenimiento').onclick = () => { 
     showScreen('mantenimiento'); 
     document.getElementById('mantenimientoForm').reset(); 
     document.getElementById('fechaMantenimiento').valueAsDate = new Date();
+    
+    // Si entró normal (sin QR), nos aseguramos de que el campo sea editable
+    if (!vinoDeQR) {
+        idDispenserInput.value = "";
+        idDispenserInput.readOnly = false;
+        idDispenserInput.style.backgroundColor = "#ffffff"; // Color blanco editable
+        idDispenserInput.placeholder = "Escribe el ID manualmente";
+    }
 };
-document.getElementById('btnLogout').onclick = () => { loggedInUser = ''; showScreen('login'); };
+
+document.getElementById('btnLogout').onclick = () => { 
+    loggedInUser = ''; 
+    vinoDeQR = false; // Resetear estado al cerrar sesión
+    showScreen('login'); 
+};
+
 document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('options');
 document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('options');
 
@@ -117,7 +146,7 @@ document.getElementById('bidonesForm').addEventListener('submit', (e) => {
         observaciones: document.getElementById('observacionesBidones').value
     };
     guardarLocal(datos);
-    document.getElementById('bidonesMessage').textContent = 'Guardado en el equipo (Sincronizando...)';
+    document.getElementById('bidonesMessage').textContent = '¡Guardado! Sincronizando en segundo plano...';
     setTimeout(() => { showScreen('options'); document.getElementById('bidonesMessage').textContent = ''; }, 1500);
 });
 
@@ -133,6 +162,6 @@ document.getElementById('mantenimientoForm').addEventListener('submit', (e) => {
         observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value
     };
     guardarLocal(datos);
-    document.getElementById('mantenimientoMessage').textContent = 'Guardado en el equipo (Sincronizando...)';
+    document.getElementById('mantenimientoMessage').textContent = '¡Guardado! Sincronizando en segundo plano...';
     setTimeout(() => { showScreen('options'); document.getElementById('mantenimientoMessage').textContent = ''; }, 1500);
 });
