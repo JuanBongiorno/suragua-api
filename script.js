@@ -5,120 +5,107 @@ const VALID_USERNAME = '1234';
 const VALID_PASSWORD = '1234';
 let loggedInUser = '';
 
-// --- REGISTRO DEL SERVICE WORKER PARA USO OFFLINE ---
+// 1. REGISTRO DEL SERVICE WORKER (Para trabajar sin internet)
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(err => console.log("Error registrando SW", err));
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log("Error SW", err));
     });
 }
 
-// --- BASE DE DATOS LOCAL (IndexedDB) ---
+// 2. BASE DE DATOS LOCAL (IndexedDB)
 let db;
 const request = indexedDB.open('SuraguaDB', 1);
 request.onupgradeneeded = (e) => {
     db = e.target.result;
     if (!db.objectStoreNames.contains('pendientes')) db.createObjectStore('pendientes', { autoIncrement: true });
 };
-request.onsuccess = (e) => { 
-    db = e.target.result; 
-    intentarSincronizar(); // Intentar enviar datos apenas abra la app
+request.onsuccess = (e) => { db = e.target.result; intentarSincronizar(); };
+
+// 3. ELEMENTOS
+const screens = {
+    login: document.getElementById('loginScreen'),
+    options: document.getElementById('optionsScreen'),
+    bidones: document.getElementById('bidonesScreen'),
+    mantenimiento: document.getElementById('mantenimientoScreen')
 };
 
-// --- ELEMENTOS DEL DOM ---
-const loginScreen = document.getElementById('loginScreen');
-const optionsScreen = document.getElementById('optionsScreen');
-const bidonesScreen = document.getElementById('bidonesScreen');
-const mantenimientoScreen = document.getElementById('mantenimientoScreen');
-const loginForm = document.getElementById('loginForm');
-const loginMessage = document.getElementById('loginMessage');
-const usernameInput = document.getElementById('username');
-const passwordInput = document.getElementById('password');
-const btnBidones = document.getElementById('btnBidones');
-const btnMantenimiento = document.getElementById('btnMantenimiento');
-const btnLogout = document.getElementById('btnLogout');
-const bidonesForm = document.getElementById('bidonesForm');
-const bidonesMessage = document.getElementById('bidonesMessage');
-const mantenimientoForm = document.getElementById('mantenimientoForm');
-const mantenimientoMessage = document.getElementById('mantenimientoMessage');
-
-// --- LÓGICA DE NAVEGACIÓN ---
-function showScreen(screenToShow) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    screenToShow.classList.add('active');
+function showScreen(name) {
+    Object.values(screens).forEach(s => s.classList.remove('active'));
+    screens[name].classList.add('active');
 }
 
+// 4. LÓGICA DE URL (ID DISPENSER)
 function getDispenserIdFromUrl() {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('idDispenser');
+    const params = new URLSearchParams(window.location.search);
+    return params.get('idDispenser');
 }
+const idDesdeUrl = getDispenserIdFromUrl();
+if (idDesdeUrl) localStorage.setItem('tempDispenserId', idDesdeUrl);
 
-const dispenserIdFromUrl = getDispenserIdFromUrl();
-if (dispenserIdFromUrl) localStorage.setItem('tempDispenserId', dispenserIdFromUrl);
-
-loginForm.addEventListener('submit', (e) => {
+// 5. LOGIN
+document.getElementById('loginForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    if (usernameInput.value.toUpperCase() === VALID_USERNAME && passwordInput.value === VALID_PASSWORD) {
-        loggedInUser = usernameInput.value.toUpperCase();
+    const user = document.getElementById('username').value.toUpperCase();
+    const pass = document.getElementById('password').value;
+
+    if (user === VALID_USERNAME && pass === VALID_PASSWORD) {
+        loggedInUser = user;
         const tempId = localStorage.getItem('tempDispenserId');
         if (tempId) {
             idDispenserInput.value = tempId;
-            showScreen(mantenimientoScreen);
+            showScreen('mantenimiento');
             localStorage.removeItem('tempDispenserId');
         } else {
-            showScreen(optionsScreen);
+            showScreen('options');
         }
     } else {
-        loginMessage.textContent = 'Usuario o contraseña incorrectos.';
+        document.getElementById('loginMessage').textContent = 'Credenciales Incorrectas';
     }
 });
 
-btnLogout.addEventListener('click', () => { loggedInUser = ''; showScreen(loginScreen); });
-btnBidones.addEventListener('click', () => { showScreen(bidonesScreen); bidonesMessage.textContent = ''; bidonesForm.reset(); });
-btnMantenimiento.addEventListener('click', () => {
-    showScreen(mantenimientoScreen);
-    mantenimientoMessage.textContent = '';
-    mantenimientoForm.reset();
+// 6. BOTONES NAVEGACIÓN
+document.getElementById('btnBidones').onclick = () => { showScreen('bidones'); document.getElementById('bidonesForm').reset(); };
+document.getElementById('btnMantenimiento').onclick = () => { 
+    showScreen('mantenimiento'); 
+    document.getElementById('mantenimientoForm').reset(); 
     document.getElementById('fechaMantenimiento').valueAsDate = new Date();
-});
-document.getElementById('backToOptionsFromBidones').addEventListener('click', () => showScreen(optionsScreen));
-document.getElementById('backToOptionsFromMantenimiento').addEventListener('click', () => showScreen(optionsScreen));
+};
+document.getElementById('btnLogout').onclick = () => { loggedInUser = ''; showScreen('login'); };
+document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('options');
+document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('options');
 
-// --- GUARDADO LOCAL RÁPIDO Y SINCRONIZACIÓN ---
-
-async function guardarEnLocal(datos) {
+// 7. FUNCIONES DE GUARDADO RÁPIDO (OFFLINE)
+function guardarLocal(datos) {
     const tx = db.transaction('pendientes', 'readwrite');
-    const store = tx.objectStore('pendientes');
-    store.add(datos);
-    intentarSincronizar(); // Intenta enviar si hay internet
+    tx.objectStore('pendientes').add(datos);
+    intentarSincronizar();
 }
 
 async function intentarSincronizar() {
     if (!navigator.onLine) return;
     const tx = db.transaction('pendientes', 'readwrite');
     const store = tx.objectStore('pendientes');
-    const registros = await new Promise(res => {
+    const all = await new Promise(res => {
         const req = store.getAll();
-        const reqKeys = store.getAllKeys();
-        req.onsuccess = () => reqKeys.onsuccess = () => res(req.result.map((d, i) => ({ k: reqKeys.result[i], d })));
+        const keys = store.getAllKeys();
+        req.onsuccess = () => keys.onsuccess = () => res(req.result.map((d, i) => ({ k: keys.result[i], d })));
     });
 
-    for (const reg of registros) {
+    for (const item of all) {
         const formData = new FormData();
-        for (const key in reg.d) formData.append(key, reg.d[key]);
+        for (const key in item.d) formData.append(key, item.d[key]);
         try {
-            const res = await fetch(APPS_SCRIPT_WEB_APP_URL, { method: 'POST', body: formData });
-            if (res.ok) {
-                const delTx = db.transaction('pendientes', 'readwrite');
-                delTx.objectStore('pendientes').delete(reg.k);
-            }
+            await fetch(APPS_SCRIPT_WEB_APP_URL, { method: 'POST', body: formData });
+            const delTx = db.transaction('pendientes', 'readwrite');
+            delTx.objectStore('pendientes').delete(item.k);
         } catch (e) { break; }
     }
 }
 
 window.addEventListener('online', intentarSincronizar);
 
-// Eventos de Formulario optimizados
-bidonesForm.addEventListener('submit', (e) => {
+// 8. ENVÍO DE FORMULARIOS
+document.getElementById('bidonesForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const datos = {
         sheet: 'Entregas',
@@ -129,13 +116,12 @@ bidonesForm.addEventListener('submit', (e) => {
         sector: document.getElementById('sector').value,
         observaciones: document.getElementById('observacionesBidones').value
     };
-    guardarEnLocal(datos);
-    bidonesMessage.textContent = '¡Datos guardados localmente! Se sincronizarán automáticamente.';
-    bidonesForm.reset();
-    setTimeout(() => showScreen(optionsScreen), 2000);
+    guardarLocal(datos);
+    document.getElementById('bidonesMessage').textContent = 'Guardado en el equipo (Sincronizando...)';
+    setTimeout(() => { showScreen('options'); document.getElementById('bidonesMessage').textContent = ''; }, 1500);
 });
 
-mantenimientoForm.addEventListener('submit', (e) => {
+document.getElementById('mantenimientoForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const datos = {
         sheet: 'Mantenimiento',
@@ -146,8 +132,7 @@ mantenimientoForm.addEventListener('submit', (e) => {
         sectorDispenser: document.getElementById('sectorDispenser').value,
         observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value
     };
-    guardarEnLocal(datos);
-    mantenimientoMessage.textContent = '¡Datos guardados localmente! Se sincronizarán automáticamente.';
-    mantenimientoForm.reset();
-    setTimeout(() => showScreen(optionsScreen), 2000);
+    guardarLocal(datos);
+    document.getElementById('mantenimientoMessage').textContent = 'Guardado en el equipo (Sincronizando...)';
+    setTimeout(() => { showScreen('options'); document.getElementById('mantenimientoMessage').textContent = ''; }, 1500);
 });

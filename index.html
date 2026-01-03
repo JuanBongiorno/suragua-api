@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Suragua - Gestión de Bidones y Mantenimiento</title>
+    <title>Suragua - Gestión</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
 </head>
@@ -72,8 +72,8 @@
             <h2>Carga de Mantenimientos</h2>
             <form id="mantenimientoForm">
                 <div class="input-group">
-                <label for="idDispenser">ID del Dispensador:</label>
-                <input type="text" id="idDispenser" readonly>
+                <label for="idDispenser">ID del Dispensador (Manual o QR):</label>
+                <input type="text" id="idDispenser" placeholder="Escribe el ID aquí">
                 </div>
                 <div class="input-group">
                     <label for="fechaMantenimiento">Fecha del Mantenimiento:</label>
@@ -97,7 +97,6 @@
             </form>
         </div>
     </div>
-
 <script src="script.js"></script>
 </body>
 </html>
