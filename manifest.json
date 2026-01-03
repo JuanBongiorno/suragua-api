@@ -1,0 +1,15 @@
+{
+  "name": "Suragua Gestión",
+  "short_name": "Suragua",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0056b3",
+  "icons": [
+    {
+      "src": "./assets/img/fondo13.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
