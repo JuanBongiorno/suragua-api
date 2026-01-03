@@ -12,6 +12,7 @@
         <img src="./assets/img/fondo13.png" alt="SuraguaLogo" class="logo">
         <h1>Bienvenido a Suragua</h1>
 
+        <!-- LOGIN -->
         <div id="loginScreen" class="screen active">
             <h2>Iniciar Sesión</h2>
             <form id="loginForm">
@@ -28,6 +29,7 @@
             </form>
         </div>
 
+        <!-- OPCIONES -->
         <div id="optionsScreen"  class="screen">
             <h2>Selecciona una opción:</h2>
             <button id="btnBidones">Carga de Bidones</button>
@@ -35,6 +37,7 @@
             <button id="btnLogout" class="btn-secondary">Cerrar Sesión</button>
         </div>
 
+        <!-- FORMULARIO BIDONES -->
         <div id="bidonesScreen" class="screen">
             <h2>Carga de Bidones</h2>
             <form id="bidonesForm">
@@ -64,11 +67,13 @@
             </form>
         </div>
 
+        <!-- FORMULARIO MANTENIMIENTO -->
         <div id="mantenimientoScreen" class="screen">
             <h2>Carga de Mantenimientos</h2>
             <form id="mantenimientoForm">
                 <div class="input-group">
                     <label for="idDispenser">ID del Dispensador:</label>
+                    <!-- SIN READONLY AQUÍ, EL JS SE ENCARGA -->
                     <input type="text" id="idDispenser" required>
                 </div>
                 <div class="input-group">
