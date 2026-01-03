@@ -1,4 +1,4 @@
-const CACHE_NAME = 'suragua-v1';
+const CACHE_NAME = 'suragua-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -8,18 +8,10 @@ const ASSETS = [
   './assets/img/freepik__upload__37400.png'
 ];
 
-// Instalar y cachear recursos
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
 });
 
-// Estrategia: Primero buscar en Cache, si no, ir a la red
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+self.addEventListener('fetch', (e) => {
+  e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
 });

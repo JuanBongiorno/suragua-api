@@ -5,36 +5,34 @@ const VALID_USERNAME = '1234';
 const VALID_PASSWORD = '1234';
 let loggedInUser = '';
 
-// 1. REGISTRO DEL SERVICE WORKER
+// 1. REGISTRO DE SERVICE WORKER PARA MODO OFFLINE
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(err => console.log("Error SW", err));
+        navigator.serviceWorker.register('./sw.js');
     });
 }
 
-// 2. BASE DE DATOS LOCAL
+// 2. BASE DE DATOS LOCAL (INDEXED DB)
 let db;
-const request = indexedDB.open('SuraguaDB', 1);
+const request = indexedDB.open('SuraguaOfflineDB', 1);
 request.onupgradeneeded = (e) => {
     db = e.target.result;
-    if (!db.objectStoreNames.contains('pendientes')) db.createObjectStore('pendientes', { autoIncrement: true });
+    if (!db.objectStoreNames.contains('pendientes')) {
+        db.createObjectStore('pendientes', { autoIncrement: true });
+    }
 };
-request.onsuccess = (e) => { db = e.target.result; intentarSincronizar(); };
-
-// 3. ELEMENTOS Y NAVEGACIÓN
-const screens = {
-    login: document.getElementById('loginScreen'),
-    options: document.getElementById('optionsScreen'),
-    bidones: document.getElementById('bidonesScreen'),
-    mantenimiento: document.getElementById('mantenimientoScreen')
+request.onsuccess = (e) => {
+    db = e.target.result;
+    intentarSincronizar();
 };
 
-function showScreen(name) {
-    Object.values(screens).forEach(s => s.classList.remove('active'));
-    screens[name].classList.add('active');
+// 3. FUNCIONES DE PANTALLA
+function showScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(screenId).classList.add('active');
 }
 
-// 4. LÓGICA DE LOGIN Y REDIRECCIÓN (QR vs MANUAL)
+// 4. LÓGICA DE LOGIN (DETECCIÓN DE QR O MANUAL)
 document.getElementById('loginForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const user = document.getElementById('username').value.toUpperCase();
@@ -43,52 +41,52 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
     if (user === VALID_USERNAME && pass === VALID_PASSWORD) {
         loggedInUser = user;
         
-        // Revisamos si hay un ID en la URL justo ahora
-        const params = new URLSearchParams(window.location.search);
-        const idQR = params.get('idDispenser');
+        // Revisar si existe ID en la URL (Escaneo de QR)
+        const urlParams = new URLSearchParams(window.location.search);
+        const idQR = urlParams.get('idDispenser');
 
         if (idQR) {
-            // SI ESCANEÓ QR: Bloqueamos campo y vamos directo
+            // SI ES QR: Bloquear campo y cargar ID
             idDispenserInput.value = idQR;
             idDispenserInput.readOnly = true;
-            idDispenserInput.style.backgroundColor = "#e9ecef"; // Gris (bloqueado)
-            showScreen('mantenimiento');
+            idDispenserInput.style.backgroundColor = "#e9ecef"; // Gris
+            showScreen('mantenimientoScreen');
         } else {
-            // SI ENTRÓ NORMAL: Vamos a opciones
-            showScreen('options');
+            // SI ES NORMAL: Ir al menú
+            showScreen('optionsScreen');
         }
     } else {
-        document.getElementById('loginMessage').textContent = 'Credenciales Incorrectas';
+        document.getElementById('loginMessage').textContent = 'Usuario o contraseña incorrectos.';
     }
 });
 
-// 5. BOTONES DEL MENÚ PRINCIPAL
-document.getElementById('btnBidones').onclick = () => { 
-    showScreen('bidones'); 
-    document.getElementById('bidonesForm').reset(); 
-};
-
-document.getElementById('btnMantenimiento').onclick = () => { 
-    // AL ENTRAR POR AQUÍ ES MANUAL: Desbloqueamos el campo SIEMPRE
+// 5. BOTONES DE NAVEGACIÓN
+document.getElementById('btnMantenimiento').onclick = () => {
+    // Si entra por el botón del menú, SIEMPRE se desbloquea para manual
     idDispenserInput.value = "";
     idDispenserInput.readOnly = false;
-    idDispenserInput.style.backgroundColor = "#ffffff"; // Blanco (editable)
-    idDispenserInput.placeholder = "Ingrese ID manualmente";
+    idDispenserInput.style.backgroundColor = "#ffffff"; // Blanco
+    idDispenserInput.placeholder = "Ingrese ID manual";
     
-    document.getElementById('mantenimientoForm').reset(); 
+    document.getElementById('mantenimientoForm').reset();
     document.getElementById('fechaMantenimiento').valueAsDate = new Date();
-    showScreen('mantenimiento');
+    showScreen('mantenimientoScreen');
 };
 
-document.getElementById('btnLogout').onclick = () => { 
-    loggedInUser = ''; 
-    window.location.href = window.location.pathname; // Limpia la URL y reinicia
+document.getElementById('btnBidones').onclick = () => {
+    document.getElementById('bidonesForm').reset();
+    showScreen('bidonesScreen');
 };
 
-document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('options');
-document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('options');
+document.getElementById('btnLogout').onclick = () => {
+    // Recarga la página limpia para cerrar sesión
+    window.location.href = window.location.pathname;
+};
 
-// 6. GUARDADO OFFLINE Y SINCRONIZACIÓN
+document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('optionsScreen');
+document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('optionsScreen');
+
+// 6. GESTIÓN DE DATOS OFFLINE
 function guardarLocal(datos) {
     const tx = db.transaction('pendientes', 'readwrite');
     tx.objectStore('pendientes').add(datos);
@@ -96,29 +94,33 @@ function guardarLocal(datos) {
 }
 
 async function intentarSincronizar() {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || !db) return;
+
     const tx = db.transaction('pendientes', 'readwrite');
     const store = tx.objectStore('pendientes');
-    const all = await new Promise(res => {
+    const todos = await new Promise(res => {
         const req = store.getAll();
         const keys = store.getAllKeys();
         req.onsuccess = () => keys.onsuccess = () => res(req.result.map((d, i) => ({ k: keys.result[i], d })));
     });
 
-    for (const item of all) {
+    for (const item of todos) {
         const formData = new FormData();
         for (const key in item.d) formData.append(key, item.d[key]);
+
         try {
-            await fetch(APPS_SCRIPT_WEB_APP_URL, { method: 'POST', body: formData });
-            const delTx = db.transaction('pendientes', 'readwrite');
-            delTx.objectStore('pendientes').delete(item.k);
-        } catch (e) { break; }
+            const response = await fetch(APPS_SCRIPT_WEB_APP_URL, { method: 'POST', body: formData });
+            if (response.ok) {
+                const delTx = db.transaction('pendientes', 'readwrite');
+                delTx.objectStore('pendientes').delete(item.k);
+            }
+        } catch (error) { break; }
     }
 }
 
 window.addEventListener('online', intentarSincronizar);
 
-// 7. ENVÍO DE FORMULARIOS
+// 7. ENVÍO DE FORMULARIOS (MÁXIMA VELOCIDAD)
 document.getElementById('bidonesForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const datos = {
@@ -131,8 +133,8 @@ document.getElementById('bidonesForm').addEventListener('submit', (e) => {
         observaciones: document.getElementById('observacionesBidones').value
     };
     guardarLocal(datos);
-    document.getElementById('bidonesMessage').textContent = '¡Guardado! Sincronizando...';
-    setTimeout(() => { showScreen('options'); document.getElementById('bidonesMessage').textContent = ''; }, 1500);
+    document.getElementById('bidonesMessage').textContent = 'Guardado con éxito (Sincronizando...)';
+    setTimeout(() => { showScreen('optionsScreen'); document.getElementById('bidonesMessage').textContent = ''; }, 1500);
 });
 
 document.getElementById('mantenimientoForm').addEventListener('submit', (e) => {
@@ -147,6 +149,6 @@ document.getElementById('mantenimientoForm').addEventListener('submit', (e) => {
         observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value
     };
     guardarLocal(datos);
-    document.getElementById('mantenimientoMessage').textContent = '¡Guardado! Sincronizando...';
-    setTimeout(() => { showScreen('options'); document.getElementById('mantenimientoMessage').textContent = ''; }, 1500);
+    document.getElementById('mantenimientoMessage').textContent = 'Guardado con éxito (Sincronizando...)';
+    setTimeout(() => { showScreen('optionsScreen'); document.getElementById('mantenimientoMessage').textContent = ''; }, 1500);
 });
