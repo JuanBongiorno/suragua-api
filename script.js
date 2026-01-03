@@ -4,30 +4,78 @@ const VALID_USERNAME = '1234';
 const VALID_PASSWORD = '1234';
 let loggedInUser = '';
 
-// 1. REGISTRO DE SERVICE WORKER
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').then(reg => {
-            console.log("SW registrado");
+            console.log("Servidor de fondo listo.");
         });
     });
 }
 
-// 2. BASE DE DATOS LOCAL
 let db;
 const request = indexedDB.open('SuraguaDB', 1);
 request.onupgradeneeded = (e) => {
     db = e.target.result;
     if (!db.objectStoreNames.contains('pendientes')) db.createObjectStore('pendientes', { autoIncrement: true });
 };
-request.onsuccess = (e) => { db = e.target.result; };
+request.onsuccess = (e) => { 
+    db = e.target.result; 
+    intentarSincronizarYa(); // Al abrir, si hay señal, manda todo
+};
 
+// --- FUNCIÓN DE ENVÍO ULTRA RÁPIDO ---
+async function intentarSincronizarYa() {
+    if (!navigator.onLine || !db) return;
+
+    const tx = db.transaction('pendientes', 'readwrite');
+    const store = tx.objectStore('pendientes');
+    const registros = await new Promise(res => {
+        const req = store.getAll();
+        const keysReq = store.getAllKeys();
+        req.onsuccess = () => keysReq.onsuccess = () => res(req.result.map((d, i) => ({ k: keysReq.result[i], d })));
+    });
+
+    if (registros.length === 0) return;
+
+    console.log("Internet detectado. Enviando ráfaga de datos...");
+
+    // Enviamos todos en paralelo para que sea instantáneo
+    await Promise.all(registros.map(async (reg) => {
+        const formData = new FormData();
+        for (const key in reg.d) formData.append(key, reg.d[key]);
+        try {
+            const res = await fetch(APPS_SCRIPT_WEB_APP_URL, { method: 'POST', body: formData, mode: 'no-cors' });
+            // 'no-cors' hace que el envío sea más rápido porque no espera la respuesta completa del servidor
+            const delTx = db.transaction('pendientes', 'readwrite');
+            delTx.objectStore('pendientes').delete(reg.k);
+        } catch (e) {
+            console.error("Error en envío rápido", e);
+        }
+    }));
+}
+
+// Escuchar el cambio de offline a online para disparar el envío al segundo
+window.addEventListener('online', intentarSincronizarYa);
+
+// --- GUARDADO LOCAL ---
+async function guardarLocal(datos) {
+    const tx = db.transaction('pendientes', 'readwrite');
+    tx.objectStore('pendientes').add(datos);
+    
+    if (navigator.onLine) {
+        intentarSincronizarYa(); // Si hay internet, no espera al fondo, manda YA.
+    } else if ('serviceWorker' in navigator && 'SyncManager' in window) {
+        const reg = await navigator.serviceWorker.ready;
+        reg.sync.register('sync-datos');
+    }
+}
+
+// Navegación y Login (Igual que antes)
 function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
 }
 
-// LOGIN
 document.getElementById('loginForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const user = document.getElementById('username').value.toUpperCase();
@@ -51,7 +99,6 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
     }
 });
 
-// BOTONES
 document.getElementById('btnMantenimiento').onclick = () => {
     document.getElementById('mantenimientoForm').reset();
     idDispenserInput.value = "";
@@ -68,49 +115,6 @@ document.getElementById('btnLogout').onclick = () => { window.location.href = wi
 document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('optionsScreen');
 document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('optionsScreen');
 
-// --- GUARDADO LOCAL Y AVISO DE SINCRONIZACIÓN ---
-async function guardarLocal(datos) {
-    const tx = db.transaction('pendientes', 'readwrite');
-    const store = tx.objectStore('pendientes');
-    store.add(datos);
-
-    // Avisamos al Service Worker que hay datos nuevos para subir
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-        const reg = await navigator.serviceWorker.ready;
-        await reg.sync.register('sync-datos'); // Esto dispara el evento en sw.js automáticamente
-    } else {
-        // Si el navegador es viejo, intentamos subirlo normal si hay señal
-        intentarSincronizarManual();
-    }
-}
-
-// Sincronización manual solo si la app está abierta (fallback)
-async function intentarSincronizarManual() {
-    if (navigator.onLine) {
-        const tx = db.transaction('pendientes', 'readwrite');
-        const store = tx.objectStore('pendientes');
-        const req = store.getAll();
-        const keysReq = store.getAllKeys();
-        req.onsuccess = () => {
-            keysReq.onsuccess = async () => {
-                for (let i = 0; i < req.result.length; i++) {
-                    const formData = new FormData();
-                    for (const key in req.result[i]) formData.append(key, req.result[i][key]);
-                    try {
-                        const res = await fetch(APPS_SCRIPT_WEB_APP_URL, { method: 'POST', body: formData });
-                        if (res.ok) {
-                            const delTx = db.transaction('pendientes', 'readwrite');
-                            delTx.objectStore('pendientes').delete(keysReq.result[i]);
-                        }
-                    } catch (e) { break; }
-                }
-            };
-        };
-    }
-}
-
-window.addEventListener('online', intentarSincronizarManual);
-
 document.getElementById('bidonesForm').addEventListener('submit', (e) => {
     e.preventDefault();
     guardarLocal({
@@ -122,7 +126,7 @@ document.getElementById('bidonesForm').addEventListener('submit', (e) => {
         observaciones: document.getElementById('observacionesBidones').value
     });
     e.target.reset();
-    document.getElementById('bidonesMessage').textContent = 'Guardado. Se enviará solo al detectar internet.';
+    document.getElementById('bidonesMessage').textContent = 'Guardado. Sincronizando...';
     setTimeout(() => { document.getElementById('bidonesMessage').textContent = ''; showScreen('optionsScreen'); }, 1500);
 });
 
@@ -137,6 +141,6 @@ document.getElementById('mantenimientoForm').addEventListener('submit', (e) => {
         observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value
     });
     e.target.reset();
-    document.getElementById('mantenimientoMessage').textContent = 'Guardado. Se enviará solo al detectar internet.';
+    document.getElementById('mantenimientoMessage').textContent = 'Guardado. Sincronizando...';
     setTimeout(() => { document.getElementById('mantenimientoMessage').textContent = ''; showScreen('optionsScreen'); }, 1500);
 });
