@@ -113,3 +113,19 @@ button:hover {
     margin-top: 10px;
     font-weight: bold;
 }
+
+.history-item {
+    border-bottom: 1px solid #ddd;
+    padding: 10px 0;
+    font-size: 14px;
+}
+.history-item:last-child {
+    border-bottom: none;
+}
+.history-item strong {
+    color: #0056b3;
+}
+#historyList {
+    background-color: #fff;
+    color: #333;
+}
