@@ -34,7 +34,6 @@
             <h2>Selecciona una opción:</h2>
             <button id="btnBidones">Carga de Bidones</button>
             <button id="btnMantenimiento">Carga de Mantenimiento</button>
-            <!-- BOTÓN HISTORIAL EN MENÚ -->
             <button id="btnHistorialMenu" style="background-color: #17a2b8;">Historial de Carga</button>
             <button id="btnLogout" class="btn-secondary">Cerrar Sesión</button>
         </div>
@@ -94,18 +93,15 @@
                     <textarea id="observacionesMantenimiento"></textarea>
                 </div>
                 <button type="submit">Guardar Datos Mantenimiento</button>
-                <!-- BOTÓN HISTORIAL DENTRO DE CARGA -->
-                <button type="button" id="btnHistorialForm" style="background-color: #17a2b8;">Historial de Carga</button>
                 <button type="button" class="btn-secondary" id="backToOptionsFromMantenimiento">Volver</button>
                 <p id="mantenimientoMessage" class="success-message"></p>
             </form>
         </div>
 
-        <!-- Pantalla HISTORIAL (VISTA GENERAL) -->
+        <!-- Pantalla HISTORIAL -->
         <div id="historyScreen" class="screen">
             <h2>Historial de Carga</h2>
             <div id="historyList" style="text-align: left; max-height: 400px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px; background: rgba(255,255,255,0.9);">
-                <!-- Los datos se cargan aquí vía JS -->
             </div>
             <button type="button" class="btn-secondary" id="backFromHistory">Volver</button>
         </div>

@@ -13,12 +13,11 @@ if ('serviceWorker' in navigator) {
 
 // --- BASE DE DATOS (IndexedDB) ---
 let db;
-const request = indexedDB.open('SuraguaDB', 2); // Versión 2 para historial
+const request = indexedDB.open('SuraguaDB', 2);
 
 request.onupgradeneeded = (e) => {
     db = e.target.result;
     if (!db.objectStoreNames.contains('pendientes')) db.createObjectStore('pendientes', { autoIncrement: true });
-    // Almacén permanente para el historial del teléfono
     if (!db.objectStoreNames.contains('historial')) db.createObjectStore('historial', { autoIncrement: true });
 };
 
@@ -54,7 +53,7 @@ window.addEventListener('online', intentarSincronizarYa);
 async function guardarLocal(datos) {
     const tx = db.transaction(['pendientes', 'historial'], 'readwrite');
     tx.objectStore('pendientes').add(datos);
-    tx.objectStore('historial').add(datos); // Copia permanente para historial
+    tx.objectStore('historial').add(datos);
     
     if (navigator.onLine) {
         intentarSincronizarYa();
@@ -87,7 +86,6 @@ async function renderHistorial() {
         return;
     }
 
-    // Mostramos los últimos primero
     list.innerHTML = todos.reverse().map(reg => {
         const esMantenimiento = reg.sheet === 'Mantenimiento';
         return `
@@ -120,14 +118,9 @@ document.getElementById('loginForm').addEventListener('submit', (e) => {
     } else { document.getElementById('loginMessage').textContent = 'Error de login'; }
 });
 
-// Botones Historial (Los dos botones hacen lo mismo)
+// Botón Historial (Solo desde el Menú)
 document.getElementById('btnHistorialMenu').onclick = () => { renderHistorial(); showScreen('historyScreen'); };
-document.getElementById('btnHistorialForm').onclick = () => { renderHistorial(); showScreen('historyScreen'); };
-document.getElementById('backFromHistory').onclick = () => {
-    // Si venimos de mantenimiento, volvemos allí, si no al menú
-    if (document.getElementById('mantenimientoForm').idDispenser.value !== "") showScreen('mantenimientoScreen');
-    else showScreen('optionsScreen');
-};
+document.getElementById('backFromHistory').onclick = () => { showScreen('optionsScreen'); };
 
 document.getElementById('btnMantenimiento').onclick = () => {
     document.getElementById('mantenimientoForm').reset();
