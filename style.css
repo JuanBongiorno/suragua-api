@@ -12,7 +12,6 @@ body {
 .imagen-fondo1 {
     background-image: url(./assets/img/freepik__upload__37400.png);
     background-size: cover;
-    background-position: center;
 }
 
 .container {
@@ -74,31 +73,24 @@ button {
     justify-content: center;
     align-items: center;
 }
-
 .modal-content {
     background: white;
     padding: 20px;
-    border-radius: 10px;
+    border-radius: 8px;
     width: 80%;
     max-width: 300px;
     text-align: center;
     position: relative;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
 }
-
 .close-alert {
     position: absolute;
-    top: 5px; right: 12px;
-    font-size: 28px;
+    top: 5px; right: 10px;
+    font-size: 24px;
     cursor: pointer;
-    color: #666;
-    font-weight: bold;
 }
-
 .machine-item {
-    padding: 10px;
     border-bottom: 1px solid #eee;
+    padding: 10px 0;
     display: flex;
     justify-content: space-between;
-    align-items: center;
 }
