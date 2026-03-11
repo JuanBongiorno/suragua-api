@@ -3,24 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Suragua - Gestión</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Suragua - Gestión v2</title>
+    <!-- Agregamos un parámetro de versión para forzar la actualización del CSS -->
+    <link rel="stylesheet" href="style.css?v=1.1">
     <link rel="manifest" href="manifest.json">
 </head>
 <body class="imagen-fondo1">
-    <!-- Alerta Personalizada (Cartel de PC) -->
+    <!-- CARTEL DE ALERTA TIPO PC -->
     <div id="customAlert" class="modal-overlay">
         <div class="modal-content">
             <span class="close-alert" id="closeAlert">&times;</span>
-            <h2 style="color: #0056b3;">Aviso</h2>
+            <h2 style="color: #0056b3; margin-top: 0;">Aviso de Sistema</h2>
             <p id="alertMessage"></p>
-            <button type="button" class="btn-secondary" id="btnCerrarAlerta">Aceptar</button>
+            <button type="button" class="btn-secondary" id="btnCerrarAlerta">Cerrar</button>
         </div>
     </div>
 
     <div class="container">
         <img src="./assets/img/fondo13.png" alt="SuraguaLogo" class="logo">
-        <h1>Bienvenido a Suragua</h1>
+        <h1 style="font-size: 1.5rem;">Bienvenido a Suragua</h1>
 
         <!-- Pantalla Login -->
         <div id="loginScreen" class="screen active">
@@ -45,6 +46,7 @@
             <button id="btnBidones">Carga de Bidones</button>
             <button id="btnMantenimiento">Carga de Mantenimiento</button>
             <button id="btnHistorialMenu" style="background-color: #17a2b8;">Historial de Carga (Hoy)</button>
+            <!-- BOTON NUEVO -->
             <button id="btnHistorialMaquinas" style="background-color: #28a745;">Historial de Máquinas</button>
             <button id="btnLogout" class="btn-secondary">Cerrar Sesión</button>
         </div>
@@ -109,25 +111,25 @@
             </form>
         </div>
 
-        <!-- Pantalla HISTORIAL CARGA (DIARIO) -->
+        <!-- Pantalla HISTORIAL DE CARGA (DIARIO) -->
         <div id="historyScreen" class="screen">
-            <h2>Historial de Carga (Hoy)</h2>
+            <h2>Carga Diaria (Hoy)</h2>
             <div id="historyList" style="text-align: left; max-height: 400px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px; background: rgba(255,255,255,0.9);">
             </div>
             <button type="button" class="btn-secondary" id="backFromHistory">Volver</button>
         </div>
 
-        <!-- Pantalla HISTORIAL DE MÁQUINAS -->
+        <!-- Pantalla HISTORIAL DE MÁQUINAS (CHECKLIST) -->
         <div id="historyMaquinasScreen" class="screen">
             <h2>Historial de Máquinas</h2>
-            <div class="input-group">
-                <input type="text" id="searchMaquina" placeholder="🔍 Buscar ID de dispenser...">
-            </div>
+            <input type="text" id="searchMaquina" placeholder="🔍 Buscar por número de ID..." style="width: 90%; padding: 10px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #ccc;">
             <div id="maquinasList" style="text-align: left; max-height: 350px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px; background: rgba(255,255,255,0.9);">
             </div>
             <button type="button" class="btn-secondary" id="backFromMaquinas">Volver</button>
         </div>
     </div>
-<script src="script.js"></script>
+
+    <!-- Agregamos versión al script para forzar actualización -->
+    <script src="script.js?v=1.1"></script>
 </body>
 </html>

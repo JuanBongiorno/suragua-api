@@ -1,4 +1,4 @@
-const CACHE_NAME = 'suragua-v20';
+const CACHE_NAME = 'suragua-v100'; // CAMBIADO PARA FORZAR ACTUALIZACIÓN
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzbjhRNjUE9mPQA0mZubSp374dS0WJlWTTdQ5Oqqc-Rok5rocJrdq9wZ8qnQTczZo8f/exec';
 const ASSETS = ['./', './index.html', './style.css', './script.js', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png'];
 
@@ -9,13 +9,14 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
     e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => k !== CACHE_NAME && caches.delete(k)))));
+    self.clients.claim();
 });
 
 self.addEventListener('fetch', (e) => {
     e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
 });
 
-// SINCRONIZACIÓN DE FONDO
+// TU LÓGICA DE SINCRONIZACIÓN DE FONDO RECUPERADA
 self.addEventListener('sync', (event) => {
     if (event.tag === 'sync-datos') {
         event.waitUntil(enviarTodoYa());
@@ -24,7 +25,7 @@ self.addEventListener('sync', (event) => {
 
 async function enviarTodoYa() {
     const db = await new Promise(resolve => {
-        const req = indexedDB.open('SuraguaDB', 1);
+        const req = indexedDB.open('SuraguaDB', 2);
         req.onsuccess = () => resolve(req.result);
     });
 
@@ -39,7 +40,6 @@ async function enviarTodoYa() {
         k.onsuccess = () => res(k.result);
     });
 
-    // Enviar todos los pendientes en paralelo para no perder tiempo
     return Promise.all(registros.map(async (data, i) => {
         const formData = new FormData();
         for (const key in data) formData.append(key, data[key]);

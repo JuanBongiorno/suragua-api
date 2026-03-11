@@ -9,9 +9,10 @@ body {
     color: #333;
 }
 
-.imagen-fondo1{
-    background-image:url(./assets/img/freepik__upload__37400.png);
+.imagen-fondo1 {
+    background-image: url(./assets/img/freepik__upload__37400.png);
     background-size: cover;
+    background-position: center;
 }
 
 .container {
@@ -22,7 +23,7 @@ body {
     width: 100%;
     max-width: 400px;
     text-align: center;
-    opacity: 79%; /* Tu opacidad original */
+    opacity: 79%; /* TU OPACIDAD ORIGINAL */
 }
 
 .logo {
@@ -42,7 +43,7 @@ h1, h2 {
 .input-group { margin-bottom: 15px; text-align: left; }
 .input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
 .input-group input, .input-group textarea {
-    width: calc(100% - 20px);
+    width: calc(100% - 22px);
     padding: 10px;
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -63,37 +64,41 @@ button {
 
 .btn-secondary { background-color: #6c757d; }
 
-/* NUEVOS ESTILOS PARA LA ALERTA */
+/* ESTILOS DEL CARTEL DE ALERTA */
 .modal-overlay {
     display: none;
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.7);
-    z-index: 9999;
+    background: rgba(0,0,0,0.6);
+    z-index: 10000;
     justify-content: center;
     align-items: center;
 }
+
 .modal-content {
     background: white;
-    padding: 25px;
+    padding: 20px;
     border-radius: 10px;
     width: 80%;
     max-width: 300px;
     text-align: center;
     position: relative;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
 }
+
 .close-alert {
     position: absolute;
-    top: 5px; right: 10px;
-    font-size: 25px;
+    top: 5px; right: 12px;
+    font-size: 28px;
     cursor: pointer;
-    color: #999;
+    color: #666;
+    font-weight: bold;
 }
+
 .machine-item {
-    border-bottom: 1px solid #ddd;
     padding: 10px;
+    border-bottom: 1px solid #eee;
     display: flex;
     justify-content: space-between;
+    align-items: center;
 }
-.machine-item small { color: #666; display: block; }

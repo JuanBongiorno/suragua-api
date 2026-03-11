@@ -14,7 +14,7 @@ request.onupgradeneeded = (e) => {
 };
 request.onsuccess = (e) => { db = e.target.result; };
 
-// --- FUNCIÓN ALERTA PERSONALIZADA ---
+// --- FUNCIÓN ALERTA PERSONALIZADA (CARTEL PC) ---
 function mostrarAlerta(msj) {
     document.getElementById('alertMessage').innerText = msj;
     document.getElementById('customAlert').style.display = 'flex';
@@ -22,49 +22,46 @@ function mostrarAlerta(msj) {
 document.getElementById('closeAlert').onclick = () => document.getElementById('customAlert').style.display = 'none';
 document.getElementById('btnCerrarAlerta').onclick = () => document.getElementById('customAlert').style.display = 'none';
 
-// --- NAVEGACIÓN ---
 function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
 }
 
-// --- HISTORIAL DE CARGA (SE RESETEA A LAS 00:00) ---
+// --- HISTORIAL DE CARGA (RESET VISUAL DIARIO) ---
 async function renderHistorialDiario() {
     const list = document.getElementById('historyList');
-    list.innerHTML = 'Cargando...';
+    list.innerHTML = 'Cargando registros de hoy...';
     const tx = db.transaction('historial', 'readonly');
     const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
 
     const hoy = new Date().toISOString().split('T')[0];
-    const filtrados = todos.filter(r => (r.fechaMantenimiento || hoy) === hoy);
+    const filtrados = todos.filter(r => {
+        const fechaReg = r.fechaMantenimiento || hoy; 
+        return fechaReg === hoy;
+    });
 
-    if (filtrados.length === 0) {
-        list.innerHTML = 'No hay cargas hoy.';
-        return;
-    }
-    list.innerHTML = filtrados.reverse().map(r => `
-        <div style="border-bottom:1px solid #eee; padding:5px;">
+    list.innerHTML = filtrados.length ? filtrados.reverse().map(r => `
+        <div style="border-bottom:1px solid #ddd; padding:8px;">
             <strong>${r.sheet === 'Mantenimiento' ? '🛠 Mant.' : '💧 Bidones'}</strong> - ${r.idDispenser || r.lugar}
-        </div>`).join('');
+        </div>`).join('') : 'No hay registros cargados hoy.';
 }
 
 // --- HISTORIAL DE MÁQUINAS (CHECKLIST + BUSCADOR) ---
-async function renderHistorialMaquinas(busqueda = '') {
+async function renderHistorialMaquinas(query = '') {
     const list = document.getElementById('maquinasList');
     const tx = db.transaction('historial', 'readonly');
     const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
 
-    // Agrupar último mantenimiento por ID
-    const maquinas = {};
-    todos.forEach(r => { if(r.sheet === 'Mantenimiento') maquinas[r.idDispenser] = r.fechaMantenimiento; });
+    const mants = {};
+    todos.forEach(r => { if(r.sheet === 'Mantenimiento') mants[r.idDispenser] = r.fechaMantenimiento; });
 
-    const ids = Object.keys(maquinas).filter(id => id.toLowerCase().includes(busqueda.toLowerCase()));
+    const ids = Object.keys(mants).filter(id => id.toLowerCase().includes(query.toLowerCase()));
 
     list.innerHTML = ids.length ? ids.map(id => `
-        <div class="machine-item" onclick="mostrarAlerta('Mantenimiento ID ${id}: ${maquinas[id]}')">
-            <div><strong>ID: ${id}</strong><small>Fecha: ${maquinas[id]}</small></div>
-            <span style="color:green">✔</span>
-        </div>`).join('') : 'Sin resultados.';
+        <div class="machine-item" onclick="mostrarAlerta('ID ${id}: Realizado el ${mants[id]}')">
+            <div><strong>ID: ${id}</strong><br><small style="color: #888;">${mants[id]}</small></div>
+            <span style="color:green; font-weight:bold;">✔</span>
+        </div>`).join('') : 'No se encontraron resultados.';
 }
 
 // --- EVENTOS ---
@@ -95,37 +92,38 @@ document.getElementById('btnBidones').onclick = () => {
 document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('optionsScreen');
 document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('optionsScreen');
 
-// --- GUARDADO CON VALIDACIÓN 10 DÍAS ---
+// --- SUBMIT MANTENIMIENTO CON BLOQUEO DE 10 DÍAS ---
 document.getElementById('mantenimientoForm').onsubmit = async (e) => {
     e.preventDefault();
     const id = idDispenserInput.value;
     const fechaActual = new Date(document.getElementById('fechaMantenimiento').value);
 
     const tx = db.transaction('historial', 'readonly');
-    const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
+    const store = tx.objectStore('historial');
+    const todos = await new Promise(res => { store.getAll().onsuccess = (e) => res(e.target.result); });
 
-    const error = todos.find(r => {
+    const repetido = todos.find(r => {
         if (r.sheet === 'Mantenimiento' && r.idDispenser === id) {
-            const fechaRef = new Date(r.fechaMantenimiento);
-            const diff = (fechaActual - fechaRef) / (1000*60*60*24);
+            const fRef = new Date(r.fechaMantenimiento);
+            const diff = (fechaActual - fRef) / (1000*60*60*24);
             return diff >= 0 && diff < 10;
         }
         return false;
     });
 
-    if (error) {
-        mostrarAlerta(`❌ Error: A esta máquina se le realizó mantenimiento el día ${error.fechaMantenimiento}.`);
+    if (repetido) {
+        mostrarAlerta(`El mantenimiento a la máquina ${id} ya se realizó el día ${repetido.fechaMantenimiento}.`);
         return;
     }
 
     guardarLocal({
-        sheet: 'Mantenimiento', usuario: loggedInUser,
-        idDispenser: id, fechaMantenimiento: document.getElementById('fechaMantenimiento').value,
+        sheet: 'Mantenimiento', usuario: loggedInUser, idDispenser: id,
+        fechaMantenimiento: document.getElementById('fechaMantenimiento').value,
         lugarDispenser: document.getElementById('lugarDispenser').value,
         sectorDispenser: document.getElementById('sectorDispenser').value,
         observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value
     });
-    mostrarAlerta("✅ Guardado correctamente.");
+    mostrarAlerta("Guardado con éxito.");
     showScreen('optionsScreen');
 };
 
@@ -146,4 +144,11 @@ function guardarLocal(datos) {
     const tx = db.transaction(['pendientes', 'historial'], 'readwrite');
     tx.objectStore('pendientes').add(datos);
     tx.objectStore('historial').add(datos);
+}
+
+// Registro de Service Worker forzado
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+        reg.update(); // Obliga a buscar cambios en el servidor
+    });
 }
