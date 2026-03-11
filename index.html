@@ -8,13 +8,13 @@
     <link rel="manifest" href="manifest.json">
 </head>
 <body class="imagen-fondo1">
-    <!-- Alerta Personalizada (Estilo Suragua) -->
+    <!-- Alerta Personalizada (Cartel de PC) -->
     <div id="customAlert" class="modal-overlay">
         <div class="modal-content">
             <span class="close-alert" id="closeAlert">&times;</span>
-            <h2 style="font-size: 1.2rem;">Aviso de Sistema</h2>
+            <h2 style="color: #0056b3;">Aviso</h2>
             <p id="alertMessage"></p>
-            <button type="button" class="btn-secondary" id="btnCerrarAlerta">Cerrar</button>
+            <button type="button" class="btn-secondary" id="btnCerrarAlerta">Aceptar</button>
         </div>
     </div>
 
@@ -45,7 +45,7 @@
             <button id="btnBidones">Carga de Bidones</button>
             <button id="btnMantenimiento">Carga de Mantenimiento</button>
             <button id="btnHistorialMenu" style="background-color: #17a2b8;">Historial de Carga (Hoy)</button>
-            <button id="btnHistorialMaquinas" style="background-color: #20c997;">Historial de Máquinas</button>
+            <button id="btnHistorialMaquinas" style="background-color: #28a745;">Historial de Máquinas</button>
             <button id="btnLogout" class="btn-secondary">Cerrar Sesión</button>
         </div>
 
@@ -109,7 +109,7 @@
             </form>
         </div>
 
-        <!-- Pantalla HISTORIAL CARGA (Se resetea visualmente a las 00hs) -->
+        <!-- Pantalla HISTORIAL CARGA (DIARIO) -->
         <div id="historyScreen" class="screen">
             <h2>Historial de Carga (Hoy)</h2>
             <div id="historyList" style="text-align: left; max-height: 400px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px; background: rgba(255,255,255,0.9);">
@@ -121,7 +121,7 @@
         <div id="historyMaquinasScreen" class="screen">
             <h2>Historial de Máquinas</h2>
             <div class="input-group">
-                <input type="text" id="searchMaquina" placeholder="Buscar ID de máquina..." style="margin-bottom: 10px;">
+                <input type="text" id="searchMaquina" placeholder="🔍 Buscar ID de dispenser...">
             </div>
             <div id="maquinasList" style="text-align: left; max-height: 350px; overflow-y: auto; margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px; background: rgba(255,255,255,0.9);">
             </div>

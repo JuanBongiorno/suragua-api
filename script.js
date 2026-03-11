@@ -4,31 +4,19 @@ const VALID_USERNAME = '1234';
 const VALID_PASSWORD = '1234';
 let loggedInUser = '';
 
-// Service Worker
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(reg => console.log("SW listo."));
-    });
-}
-
-// --- BASE DE DATOS (IndexedDB) ---
+// --- BASE DE DATOS ---
 let db;
 const request = indexedDB.open('SuraguaDB', 2);
-
 request.onupgradeneeded = (e) => {
     db = e.target.result;
     if (!db.objectStoreNames.contains('pendientes')) db.createObjectStore('pendientes', { autoIncrement: true });
     if (!db.objectStoreNames.contains('historial')) db.createObjectStore('historial', { autoIncrement: true });
 };
+request.onsuccess = (e) => { db = e.target.result; };
 
-request.onsuccess = (e) => { 
-    db = e.target.result; 
-    intentarSincronizarYa();
-};
-
-// --- FUNCIONES DE ALERTA ---
-function mostrarAlerta(mensaje) {
-    document.getElementById('alertMessage').textContent = mensaje;
+// --- FUNCIÓN ALERTA PERSONALIZADA ---
+function mostrarAlerta(msj) {
+    document.getElementById('alertMessage').innerText = msj;
     document.getElementById('customAlert').style.display = 'flex';
 }
 document.getElementById('closeAlert').onclick = () => document.getElementById('customAlert').style.display = 'none';
@@ -40,109 +28,63 @@ function showScreen(id) {
     document.getElementById(id).classList.add('active');
 }
 
-// --- HISTORIAL DE CARGA (RESET DIARIO A LAS 00) ---
-async function renderHistorial() {
+// --- HISTORIAL DE CARGA (SE RESETEA A LAS 00:00) ---
+async function renderHistorialDiario() {
     const list = document.getElementById('historyList');
-    list.innerHTML = 'Cargando registros de hoy...';
-    
+    list.innerHTML = 'Cargando...';
     const tx = db.transaction('historial', 'readonly');
-    const store = tx.objectStore('historial');
-    const todos = await new Promise(res => {
-        const req = store.getAll();
-        req.onsuccess = () => res(req.result);
-    });
+    const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
 
-    // Filtramos para que solo muestre lo que se cargó hoy (Reset diario visual)
     const hoy = new Date().toISOString().split('T')[0];
-    const registrosHoy = todos.filter(reg => {
-        // Si no tiene fecha de mantenimiento, asumimos que es una entrega de hoy
-        const fechaReg = reg.fechaMantenimiento || hoy; 
-        return fechaReg === hoy;
-    });
+    const filtrados = todos.filter(r => (r.fechaMantenimiento || hoy) === hoy);
 
-    if (registrosHoy.length === 0) {
-        list.innerHTML = 'No hay registros cargados hoy.';
+    if (filtrados.length === 0) {
+        list.innerHTML = 'No hay cargas hoy.';
         return;
     }
-
-    list.innerHTML = registrosHoy.reverse().map(reg => {
-        const esMantenimiento = reg.sheet === 'Mantenimiento';
-        return `
-            <div class="history-item">
-                <strong>${esMantenimiento ? '🛠 Mant.' : '💧 Bidones'}</strong> - ${reg.idDispenser || 'Entrega'}<br>
-                <small>${reg.lugarDispenser || reg.lugar} (${reg.sectorDispenser || reg.sector})</small>
-            </div>
-        `;
-    }).join('');
+    list.innerHTML = filtrados.reverse().map(r => `
+        <div style="border-bottom:1px solid #eee; padding:5px;">
+            <strong>${r.sheet === 'Mantenimiento' ? '🛠 Mant.' : '💧 Bidones'}</strong> - ${r.idDispenser || r.lugar}
+        </div>`).join('');
 }
 
 // --- HISTORIAL DE MÁQUINAS (CHECKLIST + BUSCADOR) ---
-async function renderHistorialMaquinas(filtro = '') {
+async function renderHistorialMaquinas(busqueda = '') {
     const list = document.getElementById('maquinasList');
     const tx = db.transaction('historial', 'readonly');
-    const store = tx.objectStore('historial');
-    const todos = await new Promise(res => {
-        const req = store.getAll();
-        req.onsuccess = () => res(req.result);
-    });
+    const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
 
-    // Obtenemos solo los mantenimientos y nos quedamos con el último por cada ID
-    const ultimosMantenimientos = {};
-    todos.forEach(reg => {
-        if (reg.sheet === 'Mantenimiento') {
-            ultimosMantenimientos[reg.idDispenser] = reg.fechaMantenimiento;
-        }
-    });
+    // Agrupar último mantenimiento por ID
+    const maquinas = {};
+    todos.forEach(r => { if(r.sheet === 'Mantenimiento') maquinas[r.idDispenser] = r.fechaMantenimiento; });
 
-    const ids = Object.keys(ultimosMantenimientos).filter(id => id.toLowerCase().includes(filtro.toLowerCase()));
+    const ids = Object.keys(maquinas).filter(id => id.toLowerCase().includes(busqueda.toLowerCase()));
 
-    if (ids.length === 0) {
-        list.innerHTML = 'No hay máquinas registradas.';
-        return;
-    }
-
-    list.innerHTML = ids.map(id => `
-        <div class="machine-item" onclick="mostrarAlerta('Mantenimiento realizado el: ${ultimosMantenimientos[id]}')">
-            <div class="machine-info">
-                <strong>ID Dispensador: ${id}</strong>
-                <small>Fecha: ${ultimosMantenimientos[id]}</small>
-            </div>
-            <span class="check-done">✔</span>
-        </div>
-    `).join('');
+    list.innerHTML = ids.length ? ids.map(id => `
+        <div class="machine-item" onclick="mostrarAlerta('Mantenimiento ID ${id}: ${maquinas[id]}')">
+            <div><strong>ID: ${id}</strong><small>Fecha: ${maquinas[id]}</small></div>
+            <span style="color:green">✔</span>
+        </div>`).join('') : 'Sin resultados.';
 }
 
 // --- EVENTOS ---
-document.getElementById('loginForm').addEventListener('submit', (e) => {
+document.getElementById('loginForm').onsubmit = (e) => {
     e.preventDefault();
-    const user = document.getElementById('username').value.toUpperCase();
-    const pass = document.getElementById('password').value;
-    if (user === VALID_USERNAME && pass === VALID_PASSWORD) {
-        loggedInUser = user;
-        const idQR = new URLSearchParams(window.location.search).get('idDispenser');
-        if (idQR) {
-            idDispenserInput.value = idQR;
-            idDispenserInput.readOnly = true;
-            idDispenserInput.style.backgroundColor = "#e9ecef";
-            showScreen('mantenimientoScreen');
-        } else {
-            showScreen('optionsScreen');
-        }
-    } else { document.getElementById('loginMessage').textContent = 'Error de login'; }
-});
+    if (document.getElementById('username').value === VALID_USERNAME && document.getElementById('password').value === VALID_PASSWORD) {
+        loggedInUser = VALID_USERNAME;
+        showScreen('optionsScreen');
+    } else { document.getElementById('loginMessage').innerText = 'Datos incorrectos'; }
+};
 
-// Botones de Menú
-document.getElementById('btnHistorialMenu').onclick = () => { renderHistorial(); showScreen('historyScreen'); };
+document.getElementById('btnHistorialMenu').onclick = () => { renderHistorialDiario(); showScreen('historyScreen'); };
 document.getElementById('btnHistorialMaquinas').onclick = () => { renderHistorialMaquinas(); showScreen('historyMaquinasScreen'); };
 document.getElementById('searchMaquina').oninput = (e) => renderHistorialMaquinas(e.target.value);
-
 document.getElementById('backFromHistory').onclick = () => showScreen('optionsScreen');
 document.getElementById('backFromMaquinas').onclick = () => showScreen('optionsScreen');
+document.getElementById('btnLogout').onclick = () => location.reload();
 
 document.getElementById('btnMantenimiento').onclick = () => {
     document.getElementById('mantenimientoForm').reset();
-    idDispenserInput.readOnly = false;
-    idDispenserInput.style.backgroundColor = "#ffffff";
     document.getElementById('fechaMantenimiento').valueAsDate = new Date();
     showScreen('mantenimientoScreen');
 };
@@ -150,51 +92,44 @@ document.getElementById('btnBidones').onclick = () => {
     document.getElementById('bidonesForm').reset();
     showScreen('bidonesScreen');
 };
-document.getElementById('btnLogout').onclick = () => { window.location.href = window.location.pathname; };
 document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('optionsScreen');
 document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('optionsScreen');
 
-// --- SUBMITS CON VALIDACIÓN DE 10 DÍAS ---
-document.getElementById('mantenimientoForm').addEventListener('submit', async (e) => {
+// --- GUARDADO CON VALIDACIÓN 10 DÍAS ---
+document.getElementById('mantenimientoForm').onsubmit = async (e) => {
     e.preventDefault();
-    const idActual = idDispenserInput.value;
-    const fechaSeleccionada = new Date(document.getElementById('fechaMantenimiento').value);
+    const id = idDispenserInput.value;
+    const fechaActual = new Date(document.getElementById('fechaMantenimiento').value);
 
-    // Validar en el historial local si existe este ID en los últimos 10 días
     const tx = db.transaction('historial', 'readonly');
-    const store = tx.objectStore('historial');
-    const todos = await new Promise(res => {
-        const r = store.getAll();
-        r.onsuccess = () => res(r.result);
-    });
+    const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
 
-    const coincidencia = todos.find(reg => {
-        if (reg.sheet === 'Mantenimiento' && reg.idDispenser === idActual) {
-            const fechaReg = new Date(reg.fechaMantenimiento);
-            const diferenciaDias = (fechaSeleccionada - fechaReg) / (1000 * 60 * 60 * 24);
-            return diferenciaDias >= 0 && diferenciaDias < 10;
+    const error = todos.find(r => {
+        if (r.sheet === 'Mantenimiento' && r.idDispenser === id) {
+            const fechaRef = new Date(r.fechaMantenimiento);
+            const diff = (fechaActual - fechaRef) / (1000*60*60*24);
+            return diff >= 0 && diff < 10;
         }
         return false;
     });
 
-    if (coincidencia) {
-        mostrarAlerta(`El mantenimiento a la máquina ${idActual} ya se realizó el día ${coincidencia.fechaMantenimiento}.`);
+    if (error) {
+        mostrarAlerta(`❌ Error: A esta máquina se le realizó mantenimiento el día ${error.fechaMantenimiento}.`);
         return;
     }
 
     guardarLocal({
         sheet: 'Mantenimiento', usuario: loggedInUser,
-        idDispenser: idActual,
-        fechaMantenimiento: document.getElementById('fechaMantenimiento').value,
+        idDispenser: id, fechaMantenimiento: document.getElementById('fechaMantenimiento').value,
         lugarDispenser: document.getElementById('lugarDispenser').value,
         sectorDispenser: document.getElementById('sectorDispenser').value,
         observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value
     });
-    document.getElementById('mantenimientoMessage').textContent = 'Guardado. Sincronizando...';
-    setTimeout(() => { document.getElementById('mantenimientoMessage').textContent = ''; showScreen('optionsScreen'); }, 1500);
-});
+    mostrarAlerta("✅ Guardado correctamente.");
+    showScreen('optionsScreen');
+};
 
-document.getElementById('bidonesForm').addEventListener('submit', (e) => {
+document.getElementById('bidonesForm').onsubmit = (e) => {
     e.preventDefault();
     guardarLocal({
         sheet: 'Entregas', usuario: loggedInUser,
@@ -204,36 +139,11 @@ document.getElementById('bidonesForm').addEventListener('submit', (e) => {
         sector: document.getElementById('sector').value,
         observaciones: document.getElementById('observacionesBidones').value
     });
-    document.getElementById('bidonesMessage').textContent = 'Guardado. Sincronizando...';
-    setTimeout(() => { document.getElementById('bidonesMessage').textContent = ''; showScreen('optionsScreen'); }, 1500);
-});
+    showScreen('optionsScreen');
+};
 
-// --- FUNCIONES CORE (Sincronización) ---
-async function guardarLocal(datos) {
+function guardarLocal(datos) {
     const tx = db.transaction(['pendientes', 'historial'], 'readwrite');
     tx.objectStore('pendientes').add(datos);
     tx.objectStore('historial').add(datos);
-    if (navigator.onLine) intentarSincronizarYa();
 }
-
-async function intentarSincronizarYa() {
-    if (!navigator.onLine || !db) return;
-    const tx = db.transaction('pendientes', 'readwrite');
-    const store = tx.objectStore('pendientes');
-    const registros = await new Promise(res => {
-        const req = store.getAll();
-        const keysReq = store.getAllKeys();
-        req.onsuccess = () => keysReq.onsuccess = () => res(req.result.map((d, i) => ({ k: keysReq.result[i], d })));
-    });
-    if (registros.length === 0) return;
-    for (let reg of registros) {
-        const formData = new FormData();
-        for (const key in reg.d) formData.append(key, reg.d[key]);
-        try {
-            await fetch(APPS_SCRIPT_WEB_APP_URL, { method: 'POST', body: formData, mode: 'no-cors' });
-            const delTx = db.transaction('pendientes', 'readwrite');
-            delTx.objectStore('pendientes').delete(reg.k);
-        } catch (e) { console.error("Error envío", e); }
-    }
-}
-window.addEventListener('online', intentarSincronizarYa);

@@ -1,55 +1,99 @@
-/* ... (Todo tu CSS original se mantiene igual, agrega esto al final) ... */
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    color: #333;
+}
 
-/* Estilos para la Alerta de PC personalizada */
+.imagen-fondo1{
+    background-image:url(./assets/img/freepik__upload__37400.png);
+    background-size: cover;
+}
+
+.container {
+    background-color: #fff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+    opacity: 79%; /* Tu opacidad original */
+}
+
+.logo {
+    margin-bottom: 20px;
+    max-width: 150px;
+    height: auto;
+}
+
+h1, h2 {
+    color: #0056b3;
+    margin-bottom: 20px;
+}
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+.input-group { margin-bottom: 15px; text-align: left; }
+.input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+.input-group input, .input-group textarea {
+    width: calc(100% - 20px);
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+button {
+    background-color: #007bff;
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.btn-secondary { background-color: #6c757d; }
+
+/* NUEVOS ESTILOS PARA LA ALERTA */
 .modal-overlay {
     display: none;
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.6);
-    z-index: 1000;
+    background: rgba(0,0,0,0.7);
+    z-index: 9999;
     justify-content: center;
     align-items: center;
 }
-
 .modal-content {
     background: white;
-    padding: 20px;
-    border-radius: 8px;
+    padding: 25px;
+    border-radius: 10px;
     width: 80%;
-    max-width: 320px;
+    max-width: 300px;
     text-align: center;
     position: relative;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
 }
-
 .close-alert {
     position: absolute;
-    top: 5px; right: 12px;
-    font-size: 28px;
+    top: 5px; right: 10px;
+    font-size: 25px;
     cursor: pointer;
-    color: #666;
+    color: #999;
 }
-
 .machine-item {
+    border-bottom: 1px solid #ddd;
     padding: 10px;
-    border-bottom: 1px solid #eee;
-    cursor: pointer;
     display: flex;
     justify-content: space-between;
-    align-items: center;
 }
-
-.machine-item:hover {
-    background-color: #f9f9f9;
-}
-
-.machine-info small {
-    display: block;
-    color: #888;
-    font-size: 11px;
-}
-
-.check-done {
-    color: #28a745;
-    font-weight: bold;
-}
+.machine-item small { color: #666; display: block; }
