@@ -1,4 +1,4 @@
-const CACHE_NAME = 'suragua-v150'; // VERSIÓN NUEVA
+const CACHE_NAME = 'suragua-v200'; // Fuerza actualización
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzbjhRNjUE9mPQA0mZubSp374dS0WJlWTTdQ5Oqqc-Rok5rocJrdq9wZ8qnQTczZo8f/exec';
 const ASSETS = ['./', './index.html', './style.css', './script.js', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png'];
 
@@ -16,7 +16,6 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
 });
 
-// SINCRONIZACIÓN DE FONDO RECUPERADA
 self.addEventListener('sync', (event) => {
     if (event.tag === 'sync-datos') {
         event.waitUntil(enviarTodoYa());
@@ -25,7 +24,7 @@ self.addEventListener('sync', (event) => {
 
 async function enviarTodoYa() {
     const db = await new Promise(resolve => {
-        const req = indexedDB.open('SuraguaDB', 2);
+        const req = indexedDB.open('SuraguaDB', 2); // Versión 2 obligatoria
         req.onsuccess = () => resolve(req.result);
     });
 
@@ -43,7 +42,6 @@ async function enviarTodoYa() {
     return Promise.all(registros.map(async (data, i) => {
         const formData = new FormData();
         for (const key in data) formData.append(key, data[key]);
-        
         try {
             await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData, mode: 'no-cors' });
             const delTx = db.transaction('pendientes', 'readwrite');
