@@ -1,4 +1,4 @@
-const CACHE_NAME = 'suragua-v2';
+const CACHE_NAME = 'suragua-v20';
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzbjhRNjUE9mPQA0mZubSp374dS0WJlWTTdQ5Oqqc-Rok5rocJrdq9wZ8qnQTczZo8f/exec';
 const ASSETS = ['./', './index.html', './style.css', './script.js', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png'];
 
