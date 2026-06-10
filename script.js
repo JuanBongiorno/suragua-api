@@ -1,8 +1,9 @@
 const idDispenserInput = document.getElementById('idDispenser');
-const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzbjhRNjUE9mPQA0mZubSp374dS0WJlWTTdQ5Oqqc-Rok5rocJrdq9wZ8qnQTczZo8f/exec';
+const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxWDTpn_p9OTg1uVwAM_Q2wMn4zBIdLf31UMSxUC35Bb1rOnmIOZtq1gEAbRmdtuyew/exec';
 const VALID_USERNAME = '1234';
 const VALID_PASSWORD = '1234';
 let loggedInUser = '';
+let datosRemotos = []; // Almacena historial del Google Sheet
 
 // Service Worker
 if ('serviceWorker' in navigator) {
@@ -21,8 +22,42 @@ request.onupgradeneeded = (e) => {
 };
 request.onsuccess = (e) => { 
     db = e.target.result; 
-    intentarEnviarYa(); // Intentar enviar lo pendiente al abrir
+    intentarEnviarYa(); 
+    verificarSesionGuardada(); // PERSISTENCIA
+    descargarHistorialRemoto(); // CARGAR HISTORIAL DE LA NUBE
 };
+
+// PERSISTENCIA DE SESIÓN
+function verificarSesionGuardada() {
+    const sUser = localStorage.getItem('suragua_user');
+    const sPass = localStorage.getItem('suragua_pass');
+    if (sUser === VALID_USERNAME && sPass === VALID_PASSWORD) {
+        loggedInUser = sUser;
+        const urlParams = new URLSearchParams(window.location.search);
+        const idQR = urlParams.get('idDispenser');
+        if (idQR) {
+            idDispenserInput.value = idQR;
+            idDispenserInput.readOnly = true;
+            idDispenserInput.style.backgroundColor = "#e9ecef";
+            document.getElementById('fechaMantenimiento').valueAsDate = new Date();
+            showScreen('mantenimientoScreen');
+        } else {
+            showScreen('optionsScreen');
+        }
+    }
+}
+
+// DESCARGAR HISTORIAL DESDE GOOGLE SHEET
+async function descargarHistorialRemoto() {
+    if (!navigator.onLine) return;
+    try {
+        const response = await fetch(APPS_SCRIPT_WEB_APP_URL + "?action=read");
+        const json = await response.json();
+        if (json && json.data) {
+            datosRemotos = json.data;
+        }
+    } catch (e) { console.error("Error al descargar historial", e); }
+}
 
 // Alerta Personalizada
 function mostrarAlerta(msj) {
@@ -64,33 +99,102 @@ async function intentarEnviarYa() {
     }
 }
 
-// Historial Diario
+// Historial Diario - ACTUALIZADO PARA MOSTRAR DATOS COMPLETOS
 async function renderHistorialDiario() {
     const list = document.getElementById('historyList');
-    list.innerHTML = 'Cargando...';
+    list.innerHTML = '<div style="text-align:center; padding:20px;">Cargando historial...</div>';
+    
     const tx = db.transaction('historial', 'readonly');
-    const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
+    const local = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
+    
     const hoy = new Date().toISOString().split('T')[0];
-    const filtrados = todos.filter(r => (r.fechaMantenimiento || hoy) === hoy);
-    list.innerHTML = filtrados.length ? filtrados.reverse().map(r => `<div style="padding:8px; border-bottom:1px solid #ddd;"><strong>${r.sheet === 'Mantenimiento' ? '🛠 Mant.' : '💧 Bid.'}</strong> - ${r.idDispenser || r.lugar}</div>`).join('') : 'No hay registros hoy.';
+    const combinados = [...local, ...datosRemotos];
+    
+    // Filtrar por los que tengan fecha de hoy
+    const filtrados = combinados.filter(r => (r.fechaMantenimiento || r.fechaCarga || "").includes(hoy));
+    
+    if (filtrados.length === 0) {
+        list.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No hay registros cargados hoy.</div>';
+        return;
+    }
+
+    // Renderizado detallado por tipo de carga
+    list.innerHTML = filtrados.reverse().map(r => {
+        if (r.sheet === 'Mantenimiento') {
+            return `
+            <div style="padding:12px; border-bottom:2px solid #0056b3; font-size:13px; background-color: #f8f9fa; margin-bottom: 10px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="color: #0056b3; font-weight: bold; font-size: 14px; margin-bottom: 6px; border-bottom: 1px solid #dee2e6; padding-bottom: 4px;">
+                    🛠 MANTENIMIENTO - ID: ${r.idDispenser}
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 4px;">
+                    <span><b>📍 Ubicación:</b> ${r.lugarDispenser}</span>
+                    <span><b>🏢 Sector:</b> ${r.sectorDispenser}</span>
+                    <span><b>👤 Operario:</b> ${r.usuario}</span>
+                    <span><b>📅 Fecha:</b> ${r.fechaMantenimiento}</span>
+                    <div style="margin-top:5px; padding-top:5px; border-top:1px dashed #ccc; color: #555;">
+                        <b>📝 Observaciones:</b><br>${r.observacionesMantenimiento || '<i>Sin observaciones</i>'}
+                    </div>
+                </div>
+            </div>`;
+        } else {
+            return `
+            <div style="padding:12px; border-bottom:2px solid #28a745; font-size:13px; background-color: #f0fdf4; margin-bottom: 10px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="color: #28a745; font-weight: bold; font-size: 14px; margin-bottom: 6px; border-bottom: 1px solid #dee2e6; padding-bottom: 4px;">
+                    💧 ENTREGA DE BIDONES
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 4px;">
+                    <span><b>📍 Lugar:</b> ${r.lugar}</span>
+                    <span><b>🏢 Sector:</b> ${r.sector}</span>
+                    <span><b>📦 Cant. Entregados:</b> ${r.cantidadEntregados}</span>
+                    <span><b>🔄 Vacíos Retirados:</b> ${r.vaciosRetirados}</span>
+                    <span><b>👤 Por:</b> ${r.usuario}</span>
+                    <div style="margin-top:5px; padding-top:5px; border-top:1px dashed #ccc; color: #555;">
+                        <b>📝 Observaciones:</b><br>${r.observaciones || '<i>Sin observaciones</i>'}
+                    </div>
+                </div>
+            </div>`;
+        }
+    }).join('');
 }
 
 // Historial Máquinas
 async function renderHistorialMaquinas(busqueda = '') {
     const list = document.getElementById('maquinasList');
+    if (!busqueda) { list.innerHTML = 'Ingresa un ID para buscar...'; return; }
+    
     const tx = db.transaction('historial', 'readonly');
-    const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
-    const mants = {};
-    todos.forEach(r => { if(r.sheet === 'Mantenimiento') mants[r.idDispenser] = r.fechaMantenimiento; });
-    const filtrados = Object.keys(mants).filter(id => id.toLowerCase().includes(busqueda.toLowerCase()));
-    list.innerHTML = filtrados.map(id => `<div class="machine-item" onclick="mostrarAlerta('ID: ${id} - Fecha: ${mants[id]}')"><div><strong>ID: ${id}</strong><br><small>${mants[id]}</small></div><span style="color:green">✔</span></div>`).join('') || 'Sin resultados.';
+    const local = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
+    const combinados = [...local, ...datosRemotos];
+    
+    // Filtro estricto por ID
+    const filtrados = combinados.filter(r => 
+        r.sheet === 'Mantenimiento' && 
+        r.idDispenser.toString().trim() === busqueda.toString().trim()
+    );
+
+    if (filtrados.length === 0) {
+        list.innerHTML = `No se encontró historial para: ${busqueda}`;
+        return;
+    }
+
+    list.innerHTML = filtrados.reverse().map(r => `
+        <div style="padding:10px; border-bottom:1px solid #ddd; font-size:12px; background:#f9f9f9; margin-bottom:5px;">
+            <b>📅 Fecha: ${r.fechaMantenimiento}</b><br>
+            📍 Ubicación: ${r.lugarDispenser} | Sector: ${r.sectorDispenser}<br>
+            👤 Operario: ${r.usuario}<br>
+            📝 Observaciones: ${r.observacionesMantenimiento || 'Sin observaciones'}
+        </div>`).join('');
 }
 
 // Login con URL Param
 document.getElementById('loginForm').onsubmit = (e) => {
     e.preventDefault();
-    if (document.getElementById('username').value === VALID_USERNAME && document.getElementById('password').value === VALID_PASSWORD) {
+    const u = document.getElementById('username').value;
+    const p = document.getElementById('password').value;
+    if (u === VALID_USERNAME && p === VALID_PASSWORD) {
         loggedInUser = VALID_USERNAME;
+        localStorage.setItem('suragua_user', u); // PERSISTENCIA
+        localStorage.setItem('suragua_pass', p); // PERSISTENCIA
         const urlParams = new URLSearchParams(window.location.search);
         const idQR = urlParams.get('idDispenser');
         if (idQR) {
@@ -107,11 +211,14 @@ document.getElementById('loginForm').onsubmit = (e) => {
 
 // Navegación
 document.getElementById('btnHistorialMenu').onclick = () => { renderHistorialDiario(); showScreen('historyScreen'); };
-document.getElementById('btnHistorialMaquinas').onclick = () => { renderHistorialMaquinas(); showScreen('historyMaquinasScreen'); };
+document.getElementById('btnHistorialMaquinas').onclick = () => { descargarHistorialRemoto(); showScreen('historyMaquinasScreen'); };
 document.getElementById('searchMaquina').oninput = (e) => renderHistorialMaquinas(e.target.value);
 document.getElementById('backFromHistory').onclick = () => showScreen('optionsScreen');
 document.getElementById('backFromMaquinas').onclick = () => showScreen('optionsScreen');
-document.getElementById('btnLogout').onclick = () => location.href = location.pathname;
+document.getElementById('btnLogout').onclick = () => {
+    localStorage.clear();
+    location.href = location.pathname;
+};
 
 document.getElementById('btnMantenimiento').onclick = () => {
     document.getElementById('mantenimientoForm').reset();
@@ -124,17 +231,21 @@ document.getElementById('btnBidones').onclick = () => { document.getElementById(
 document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('optionsScreen');
 document.getElementById('backToOptionsFromMantenimiento').onclick = () => showScreen('optionsScreen');
 
-// Submits
+// Submits - PREVENCIÓN DE DUPLICADOS
 document.getElementById('mantenimientoForm').onsubmit = async (e) => {
     e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    if(btn.disabled) return; 
+
     const id = idDispenserInput.value;
     const fechaActual = document.getElementById('fechaMantenimiento').value;
     
     // Validación 10 días
     const tx = db.transaction('historial', 'readonly');
-    const todos = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
-    const duplicado = todos.find(r => {
-        if(r.sheet === 'Mantenimiento' && r.idDispenser === id) {
+    const local = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
+    const combinados = [...local, ...datosRemotos];
+    const duplicado = combinados.find(r => {
+        if(r.sheet === 'Mantenimiento' && r.idDispenser.toString() === id.toString()) {
             const diff = (new Date(fechaActual) - new Date(r.fechaMantenimiento)) / (1000*60*60*24);
             return diff >= 0 && diff < 10;
         }
@@ -142,6 +253,9 @@ document.getElementById('mantenimientoForm').onsubmit = async (e) => {
     });
 
     if(duplicado) { mostrarAlerta(`La máquina ${id} ya fue cargada el ${duplicado.fechaMantenimiento}.`); return; }
+
+    btn.disabled = true; // BLOQUEO PARA GOOGLE SHEET
+    btn.innerText = "Guardando...";
 
     const datos = {
         sheet: 'Mantenimiento', usuario: loggedInUser, idDispenser: id,
@@ -153,11 +267,18 @@ document.getElementById('mantenimientoForm').onsubmit = async (e) => {
 
     await guardarLocal(datos);
     mostrarAlerta("Guardado correctamente.");
+    btn.disabled = false;
+    btn.innerText = "Guardar Datos Mantenimiento";
     showScreen('optionsScreen');
 };
 
 document.getElementById('bidonesForm').onsubmit = async (e) => {
     e.preventDefault();
+    const btn = e.target.querySelector('button[type="submit"]');
+    if(btn.disabled) return;
+    btn.disabled = true;
+    btn.innerText = "Guardando...";
+
     const datos = {
         sheet: 'Entregas', usuario: loggedInUser,
         cantidadEntregados: document.getElementById('cantidadEntregados').value,
@@ -167,6 +288,8 @@ document.getElementById('bidonesForm').onsubmit = async (e) => {
         observaciones: document.getElementById('observacionesBidones').value
     };
     await guardarLocal(datos);
+    btn.disabled = false;
+    btn.innerText = "Guardar Datos Bidones";
     showScreen('optionsScreen');
 };
 
@@ -175,7 +298,7 @@ async function guardarLocal(datos) {
     tx.objectStore('pendientes').add(datos);
     tx.objectStore('historial').add(datos);
     
-    intentarEnviarYa(); // Intentar enviar apenas se guarda
+    intentarEnviarYa();
 
     if ('serviceWorker' in navigator && 'SyncManager' in window) {
         const reg = await navigator.serviceWorker.ready;
