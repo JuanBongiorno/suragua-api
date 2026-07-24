@@ -5,6 +5,36 @@ const VALID_PASSWORD = '1234';
 let loggedInUser = '';
 let datosRemotos = []; // Almacena historial del Google Sheet
 
+function parseFechaMantenimiento(fecha) {
+    if (!fecha) return null;
+    const valor = fecha.toString().trim();
+    const isoMatch = valor.match(/^\d{4}-\d{2}-\d{2}$/);
+    if (isoMatch) return new Date(valor + 'T00:00:00');
+    const parts = valor.split(/[\/\.-]/).map(p => p.trim());
+    if (parts.length === 3) {
+        let [dia, mes, ano] = parts;
+        if (ano.length === 2) {
+            ano = ano >= '70' ? '19' + ano : '20' + ano;
+        }
+        if (dia.length === 1) dia = '0' + dia;
+        if (mes.length === 1) mes = '0' + mes;
+        return new Date(`${ano}-${mes}-${dia}T00:00:00`);
+    }
+    const parsed = new Date(valor);
+    return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function ordenarPorFechaDesc(registros) {
+    return registros.slice().sort((a, b) => {
+        const fechaA = parseFechaMantenimiento(a.fechaMantenimiento);
+        const fechaB = parseFechaMantenimiento(b.fechaMantenimiento);
+        if (!fechaA && !fechaB) return 0;
+        if (!fechaA) return 1;
+        if (!fechaB) return -1;
+        return fechaB - fechaA;
+    });
+}
+
 // Service Worker
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -177,7 +207,8 @@ async function renderHistorialMaquinas(busqueda = '') {
         return;
     }
 
-    list.innerHTML = filtrados.reverse().map(r => `
+    const ordenados = ordenarPorFechaDesc(filtrados);
+    list.innerHTML = ordenados.map(r => `
         <div style="padding:10px; border-bottom:1px solid #ddd; font-size:12px; background:#f9f9f9; margin-bottom:5px;">
             <b>📅 Fecha: ${r.fechaMantenimiento}</b><br>
             📍 Ubicación: ${r.lugarDispenser} | Sector: ${r.sectorDispenser}<br>
