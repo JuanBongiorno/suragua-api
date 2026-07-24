@@ -8,30 +8,75 @@ let datosRemotos = []; // Almacena historial del Google Sheet
 function parseFechaMantenimiento(fecha) {
     if (!fecha) return null;
     const valor = fecha.toString().trim();
-    const isoMatch = valor.match(/^\d{4}-\d{2}-\d{2}$/);
-    if (isoMatch) return new Date(valor + 'T00:00:00');
+    const crearFecha = (str) => {
+        const d = new Date(str);
+        return Number.isNaN(d.getTime()) ? null : d;
+    };
+
+    const isoMatch = valor.match(/^\d{4}-\d{2}-\d{2}([ T].*)?$/);
+    if (isoMatch) return crearFecha(valor.replace(' ', 'T'));
+
     const parts = valor.split(/[\/\.-]/).map(p => p.trim());
     if (parts.length === 3) {
-        let [dia, mes, ano] = parts;
-        if (ano.length === 2) {
-            ano = ano >= '70' ? '19' + ano : '20' + ano;
+        let [p1, p2, p3] = parts;
+        let dia, mes, ano;
+        if (p1.length === 4) {
+            // Formato YYYY/MM/DD o YYYY.MM.DD
+            ano = p1;
+            mes = p2.padStart(2, '0');
+            dia = p3.padStart(2, '0');
+        } else if (p3.length === 4) {
+            // Formato DD/MM/YYYY o MM/DD/YYYY
+            ano = p3;
+            const num1 = Number(p1);
+            const num2 = Number(p2);
+            if (num1 > 12) {
+                dia = p1.padStart(2, '0');
+                mes = p2.padStart(2, '0');
+            } else if (num2 > 12) {
+                dia = p2.padStart(2, '0');
+                mes = p1.padStart(2, '0');
+            } else {
+                dia = p1.padStart(2, '0');
+                mes = p2.padStart(2, '0');
+            }
+        } else if (p3.length === 2) {
+            // Formato DD/MM/YY o MM/DD/YY
+            ano = p3 >= '70' ? '19' + p3 : '20' + p3;
+            const num1 = Number(p1);
+            const num2 = Number(p2);
+            if (num1 > 12) {
+                dia = p1.padStart(2, '0');
+                mes = p2.padStart(2, '0');
+            } else if (num2 > 12) {
+                dia = p2.padStart(2, '0');
+                mes = p1.padStart(2, '0');
+            } else {
+                dia = p1.padStart(2, '0');
+                mes = p2.padStart(2, '0');
+            }
+        } else {
+            return crearFecha(valor);
         }
-        if (dia.length === 1) dia = '0' + dia;
-        if (mes.length === 1) mes = '0' + mes;
-        return new Date(`${ano}-${mes}-${dia}T00:00:00`);
+        return crearFecha(`${ano}-${mes}-${dia}T00:00:00`);
     }
-    const parsed = new Date(valor);
-    return isNaN(parsed.getTime()) ? null : parsed;
+
+    return crearFecha(valor.replace(/\s+/g, 'T'));
+}
+
+function getFechaRegistro(registro) {
+    const fecha = parseFechaMantenimiento(registro.fechaMantenimiento || registro.fechaCarga || '');
+    return fecha;
 }
 
 function ordenarPorFechaDesc(registros) {
     return registros.slice().sort((a, b) => {
-        const fechaA = parseFechaMantenimiento(a.fechaMantenimiento);
-        const fechaB = parseFechaMantenimiento(b.fechaMantenimiento);
+        const fechaA = getFechaRegistro(a);
+        const fechaB = getFechaRegistro(b);
         if (!fechaA && !fechaB) return 0;
         if (!fechaA) return 1;
         if (!fechaB) return -1;
-        return fechaB - fechaA;
+        return fechaB.getTime() - fechaA.getTime();
     });
 }
 
@@ -148,8 +193,10 @@ async function renderHistorialDiario() {
         return;
     }
 
+    const ordenados = ordenarPorFechaDesc(filtrados);
+
     // Renderizado detallado por tipo de carga
-    list.innerHTML = filtrados.reverse().map(r => {
+    list.innerHTML = ordenados.map(r => {
         if (r.sheet === 'Mantenimiento') {
             return `
             <div style="padding:12px; border-bottom:2px solid #0056b3; font-size:13px; background-color: #f8f9fa; margin-bottom: 10px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
@@ -242,7 +289,7 @@ document.getElementById('loginForm').onsubmit = (e) => {
 
 // Navegación
 document.getElementById('btnHistorialMenu').onclick = () => { renderHistorialDiario(); showScreen('historyScreen'); };
-document.getElementById('btnHistorialMaquinas').onclick = () => { descargarHistorialRemoto(); showScreen('historyMaquinasScreen'); };
+document.getElementById('btnHistorialMaquinas').onclick = async () => { await descargarHistorialRemoto(); showScreen('historyMaquinasScreen'); };
 document.getElementById('searchMaquina').oninput = (e) => renderHistorialMaquinas(e.target.value);
 document.getElementById('backFromHistory').onclick = () => showScreen('optionsScreen');
 document.getElementById('backFromMaquinas').onclick = () => showScreen('optionsScreen');
@@ -275,9 +322,12 @@ document.getElementById('mantenimientoForm').onsubmit = async (e) => {
     const tx = db.transaction('historial', 'readonly');
     const local = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
     const combinados = [...local, ...datosRemotos];
+    const fechaActualDate = parseFechaMantenimiento(fechaActual);
     const duplicado = combinados.find(r => {
-        if(r.sheet === 'Mantenimiento' && r.idDispenser.toString() === id.toString()) {
-            const diff = (new Date(fechaActual) - new Date(r.fechaMantenimiento)) / (1000*60*60*24);
+        if (r.sheet === 'Mantenimiento' && r.idDispenser.toString() === id.toString()) {
+            const fechaRegistro = parseFechaMantenimiento(r.fechaMantenimiento);
+            if (!fechaRegistro || !fechaActualDate) return false;
+            const diff = (fechaActualDate - fechaRegistro) / (1000*60*60*24);
             return diff >= 0 && diff < 10;
         }
         return false;
