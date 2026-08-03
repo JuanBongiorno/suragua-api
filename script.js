@@ -2,6 +2,7 @@ const idDispenserInput = document.getElementById('idDispenser');
 const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxWDTpn_p9OTg1uVwAM_Q2wMn4zBIdLf31UMSxUC35Bb1rOnmIOZtq1gEAbRmdtuyew/exec';
 const VALID_USERNAME = '1234';
 const VALID_PASSWORD = '1234';
+const USE_SERVICE_WORKER_SYNC = 'serviceWorker' in navigator && 'SyncManager' in window;
 let loggedInUser = '';
 let datosRemotos = []; // Almacena historial del Google Sheet
 
@@ -97,7 +98,7 @@ request.onupgradeneeded = (e) => {
 };
 request.onsuccess = (e) => { 
     db = e.target.result; 
-    intentarEnviarYa(); 
+    if (navigator.onLine) intentarEnviarYa(); 
     verificarSesionGuardada(); // PERSISTENCIA
     descargarHistorialRemoto(); // CARGAR HISTORIAL DE LA NUBE
 };
@@ -378,10 +379,15 @@ async function guardarLocal(datos) {
     const tx = db.transaction(['pendientes', 'historial'], 'readwrite');
     tx.objectStore('pendientes').add(datos);
     tx.objectStore('historial').add(datos);
+    await new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+    });
     
-    intentarEnviarYa();
-
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
+    if (navigator.onLine) {
+        intentarEnviarYa();
+    } else if (USE_SERVICE_WORKER_SYNC) {
         const reg = await navigator.serviceWorker.ready;
         reg.sync.register('sync-datos');
     }
