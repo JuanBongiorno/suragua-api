@@ -1,10 +1,73 @@
 const idDispenserInput = document.getElementById('idDispenser');
-const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxWDTpn_p9OTg1uVwAM_Q2wMn4zBIdLf31UMSxUC35Bb1rOnmIOZtq1gEAbRmdtuyew/exec';
-const VALID_USERNAME = '1234';
-const VALID_PASSWORD = '1234';
+const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyUWgnLwIgXV-aKysdwH_4n9Z0SwekLYzGlk1GISiAHc6L8_Y78_0CmHRe2m1Xo1t-6/exec';
+
+// Configuración de usuarios y credenciales
+const USUARIOS_VALIDOS = {
+    'GAMBOA': '94998028',
+    'HERLEIN': '39273339'
+};
+
 const USE_SERVICE_WORKER_SYNC = 'serviceWorker' in navigator && 'SyncManager' in window;
 let loggedInUser = '';
 let datosRemotos = []; // Almacena historial del Google Sheet
+
+// Identificación automática de dispositivo e IP
+let currentDeviceId = localStorage.getItem('suragua_device_id');
+if (!currentDeviceId) {
+    currentDeviceId = 'DEV-' + Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    localStorage.setItem('suragua_device_id', currentDeviceId);
+}
+
+function getDeviceInfo() {
+    const ua = navigator.userAgent || '';
+    let modelo = 'PC / Navegador';
+    if (/android/i.test(ua)) {
+        const match = ua.match(/Android\s+([\d\.]+);?\s*([^;]+?)\s*Build/i);
+        modelo = match ? `${match[2].trim()} (Android ${match[1]})` : 'Android';
+    } else if (/iphone|ipad|ipod/i.test(ua)) {
+        modelo = 'iPhone / iOS';
+    } else if (/windows/i.test(ua)) {
+        modelo = 'Windows PC';
+    }
+    return modelo;
+}
+
+let currentIp = 'Sin conexión';
+async function actualizarIp() {
+    try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        if (data && data.ip) currentIp = data.ip;
+    } catch(e) {
+        // En caso de offline o bloqueo
+    }
+}
+actualizarIp();
+window.addEventListener('online', actualizarIp);
+
+// Manejo del selector de usuarios y contraseña
+const usernameSelect = document.getElementById('username');
+const passwordInput = document.getElementById('password');
+
+if (usernameSelect && passwordInput) {
+    usernameSelect.addEventListener('change', () => {
+        if (usernameSelect.value) {
+            passwordInput.disabled = false;
+            passwordInput.focus();
+        } else {
+            passwordInput.disabled = true;
+            passwordInput.value = '';
+        }
+    });
+
+    // Permitir enviar con Enter en cualquier campo del formulario
+    passwordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('loginForm').requestSubmit();
+        }
+    });
+}
 
 function parseFechaMantenimiento(fecha) {
     if (!fecha) return null;
@@ -107,8 +170,9 @@ request.onsuccess = (e) => {
 function verificarSesionGuardada() {
     const sUser = localStorage.getItem('suragua_user');
     const sPass = localStorage.getItem('suragua_pass');
-    if (sUser === VALID_USERNAME && sPass === VALID_PASSWORD) {
+    if (sUser && USUARIOS_VALIDOS[sUser] && USUARIOS_VALIDOS[sUser] === sPass) {
         loggedInUser = sUser;
+        actualizarCamposTecnico();
         const urlParams = new URLSearchParams(window.location.search);
         const idQR = urlParams.get('idDispenser');
         if (idQR) {
@@ -120,6 +184,17 @@ function verificarSesionGuardada() {
         } else {
             showScreen('optionsScreen');
         }
+    }
+}
+
+function actualizarCamposTecnico() {
+    const tecnicoInput = document.getElementById('tecnicoMantenimiento');
+    if (tecnicoInput) {
+        tecnicoInput.value = loggedInUser;
+    }
+    const usuarioMantInput = document.getElementById('usuarioMantenimiento');
+    if (usuarioMantInput) {
+        usuarioMantInput.value = 'TOYOTA';
     }
 }
 
@@ -207,7 +282,8 @@ async function renderHistorialDiario() {
                 <div style="display: grid; grid-template-columns: 1fr; gap: 4px;">
                     <span><b>📍 Ubicación:</b> ${r.lugarDispenser}</span>
                     <span><b>🏢 Sector:</b> ${r.sectorDispenser}</span>
-                    <span><b>👤 Operario:</b> ${r.usuario}</span>
+                    <span><b>🏢 Cliente:</b> ${r.usuario || 'N/A'}</span>
+                    <span><b>🔧 Técnico:</b> ${r.tecnico || 'N/A'}</span>
                     <span><b>📅 Fecha:</b> ${r.fechaMantenimiento}</span>
                     <div style="margin-top:5px; padding-top:5px; border-top:1px dashed #ccc; color: #555;">
                         <b>📝 Observaciones:</b><br>${r.observacionesMantenimiento || '<i>Sin observaciones</i>'}
@@ -260,7 +336,7 @@ async function renderHistorialMaquinas(busqueda = '') {
         <div style="padding:10px; border-bottom:1px solid #ddd; font-size:12px; background:#f9f9f9; margin-bottom:5px;">
             <b>📅 Fecha: ${r.fechaMantenimiento}</b><br>
             📍 Ubicación: ${r.lugarDispenser} | Sector: ${r.sectorDispenser}<br>
-            👤 Operario: ${r.usuario}<br>
+            🏢 Cliente: ${r.usuario || 'N/A'} | 🔧 Técnico: ${r.tecnico || 'N/A'}<br>
             📝 Observaciones: ${r.observacionesMantenimiento || 'Sin observaciones'}
         </div>`).join('');
 }
@@ -270,10 +346,12 @@ document.getElementById('loginForm').onsubmit = (e) => {
     e.preventDefault();
     const u = document.getElementById('username').value;
     const p = document.getElementById('password').value;
-    if (u === VALID_USERNAME && p === VALID_PASSWORD) {
-        loggedInUser = VALID_USERNAME;
+    if (u && USUARIOS_VALIDOS[u] && USUARIOS_VALIDOS[u] === p) {
+        loggedInUser = u;
         localStorage.setItem('suragua_user', u); // PERSISTENCIA
         localStorage.setItem('suragua_pass', p); // PERSISTENCIA
+        actualizarCamposTecnico();
+        document.getElementById('loginMessage').innerText = '';
         const urlParams = new URLSearchParams(window.location.search);
         const idQR = urlParams.get('idDispenser');
         if (idQR) {
@@ -285,7 +363,9 @@ document.getElementById('loginForm').onsubmit = (e) => {
         } else {
             showScreen('optionsScreen');
         }
-    } else { document.getElementById('loginMessage').innerText = 'Datos incorrectos'; }
+    } else { 
+        document.getElementById('loginMessage').innerText = 'Usuario o contraseña incorrectos'; 
+    }
 };
 
 // Navegación
@@ -301,6 +381,7 @@ document.getElementById('btnLogout').onclick = () => {
 
 document.getElementById('btnMantenimiento').onclick = () => {
     document.getElementById('mantenimientoForm').reset();
+    actualizarCamposTecnico();
     idDispenserInput.readOnly = false;
     idDispenserInput.style.backgroundColor = "#ffffff";
     document.getElementById('fechaMantenimiento').valueAsDate = new Date();
@@ -340,11 +421,17 @@ document.getElementById('mantenimientoForm').onsubmit = async (e) => {
     btn.innerText = "Guardando...";
 
     const datos = {
-        sheet: 'Mantenimiento', usuario: loggedInUser, idDispenser: id,
+        sheet: 'Mantenimiento',
+        usuario: document.getElementById('usuarioMantenimiento') ? document.getElementById('usuarioMantenimiento').value : 'TOYOTA',
+        tecnico: loggedInUser,
+        idDispenser: id,
         fechaMantenimiento: fechaActual,
         lugarDispenser: document.getElementById('lugarDispenser').value,
         sectorDispenser: document.getElementById('sectorDispenser').value,
-        observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value
+        observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value,
+        deviceId: currentDeviceId,
+        dispositivo: getDeviceInfo(),
+        ip: currentIp
     };
 
     await guardarLocal(datos);

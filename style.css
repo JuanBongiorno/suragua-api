@@ -41,12 +41,18 @@ h1, h2 {
 
 .input-group { margin-bottom: 15px; text-align: left; }
 .input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
-.input-group input, .input-group textarea {
-    width: calc(100% - 22px);
+.input-group input, .input-group textarea, .input-group select {
+    width: 100%;
+    box-sizing: border-box;
     padding: 10px;
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 16px;
+    background-color: #fff;
+}
+.input-group select:disabled, .input-group input:disabled {
+    background-color: #e9ecef;
+    cursor: not-allowed;
 }
 
 button {

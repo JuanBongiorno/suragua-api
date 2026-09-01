@@ -1,5 +1,5 @@
-const CACHE_NAME = 'suragua-v200'; // Fuerza actualización
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxWDTpn_p9OTg1uVwAM_Q2wMn4zBIdLf31UMSxUC35Bb1rOnmIOZtq1gEAbRmdtuyew/exec';
+const CACHE_NAME = 'suragua-v204'; // Fuerza actualización
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyUWgnLwIgXV-aKysdwH_4n9Z0SwekLYzGlk1GISiAHc6L8_Y78_0CmHRe2m1Xo1t-6/exec';
 const ASSETS = ['./', './index.html', './style.css', './script.js', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png'];
 
 self.addEventListener('install', (e) => {
