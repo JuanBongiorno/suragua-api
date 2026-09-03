@@ -3,7 +3,7 @@ const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyUWgnL
 
 // Configuración de usuarios y credenciales
 const USUARIOS_VALIDOS = {
-    'GAMBOA': '94998028',
+    'GAMBOA': '94992028',
     'HERLEIN': '39273339'
 };
 
