@@ -1,6 +1,6 @@
 /* Shared by the page and the service worker. */
 const SuraguaData = (() => {
-    const url = 'https://script.google.com/macros/s/AKfycbxmyhy14gG4WjT43SurVX1GpRagCrO3AKfTXYd24-eiG3MkLL65wt4iQ7RwjREXYwD5/exec';
+    const url = 'https://script.google.com/macros/s/AKfycbz073Xnw0Te5elcLw5AwSW4rRiTOQ98z1s_6A6orGaPDpb8PC3z4EV5_tTCQC_tcI1j/exec';
     const done = tx => new Promise((resolve, reject) => {
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error);

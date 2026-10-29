@@ -1,6 +1,6 @@
-importScripts('./data.js?v=206');
-const CACHE_NAME = 'suragua-v206';
-const ASSETS = ['./', './index.html', './manifest.json', './style.css?v=201', './data.js?v=206', './script.js?v=205', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png', './assets/img/fono34.png.png'];
+importScripts('./data.js?v=207');
+const CACHE_NAME = 'suragua-v207';
+const ASSETS = ['./', './index.html', './manifest.json', './style.css?v=201', './data.js?v=207', './script.js?v=205', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png', './assets/img/fono34.png.png'];
 
 self.addEventListener('install', event => {
     event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
