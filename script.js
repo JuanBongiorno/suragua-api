@@ -1,5 +1,4 @@
 const idDispenserInput = document.getElementById('idDispenser');
-const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyUWgnLwIgXV-aKysdwH_4n9Z0SwekLYzGlk1GISiAHc6L8_Y78_0CmHRe2m1Xo1t-6/exec';
 
 // Configuración de usuarios y credenciales
 const USUARIOS_VALIDOS = {
@@ -10,6 +9,11 @@ const USUARIOS_VALIDOS = {
 const USE_SERVICE_WORKER_SYNC = 'serviceWorker' in navigator && 'SyncManager' in window;
 let loggedInUser = '';
 let datosRemotos = []; // Almacena historial del Google Sheet
+let ultimaSincronizacion = '';
+let machineLookup = 0;
+let remoteDownload;
+let remoteDownloadedAt = 0;
+let remoteDownloadFailed = false;
 
 // Identificación automática de dispositivo e IP
 let currentDeviceId = localStorage.getItem('suragua_device_id');
@@ -79,6 +83,11 @@ function parseFechaMantenimiento(fecha) {
 
     const isoMatch = valor.match(/^\d{4}-\d{2}-\d{2}([ T].*)?$/);
     if (isoMatch) return crearFecha(valor.replace(' ', 'T'));
+    const conHora = valor.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (conHora) {
+        const [, dia, mes, ano, hora, minuto, segundo = '00'] = conHora;
+        return crearFecha(`${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}T${hora.padStart(2, '0')}:${minuto}:${segundo}`);
+    }
 
     const parts = valor.split(/[\/\.-]/).map(p => p.trim());
     if (parts.length === 3) {
@@ -140,31 +149,40 @@ function ordenarPorFechaDesc(registros) {
         if (!fechaA && !fechaB) return 0;
         if (!fechaA) return 1;
         if (!fechaB) return -1;
-        return fechaB.getTime() - fechaA.getTime();
+        return fechaB.getTime() - fechaA.getTime() ||
+            (parseFechaMantenimiento(b.fechaCarga)?.getTime() || 0) -
+            (parseFechaMantenimiento(a.fechaCarga)?.getTime() || 0);
     });
 }
 
 // Service Worker
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(reg => reg.update());
+        navigator.serviceWorker.register('./sw.js').then(reg => reg.update())
+            .catch(error => { console.error(error); mostrarAlerta('No se pudo preparar el modo sin conexion.'); });
     });
 }
 
 // Base de Datos IndexedDB
 let db;
-const request = indexedDB.open('SuraguaDB', 2);
-request.onupgradeneeded = (e) => {
-    db = e.target.result;
-    if (!db.objectStoreNames.contains('pendientes')) db.createObjectStore('pendientes', { autoIncrement: true });
-    if (!db.objectStoreNames.contains('historial')) db.createObjectStore('historial', { autoIncrement: true });
-};
-request.onsuccess = (e) => { 
-    db = e.target.result; 
-    if (navigator.onLine) intentarEnviarYa(); 
-    verificarSesionGuardada(); // PERSISTENCIA
-    descargarHistorialRemoto(); // CARGAR HISTORIAL DE LA NUBE
-};
+const dbReady = SuraguaData.open().then(async database => {
+    db = database;
+    await SuraguaData.migrate(db);
+    const cache = await SuraguaData.cached(db);
+    datosRemotos = cache ? cache.data : [];
+    ultimaSincronizacion = cache ? cache.updatedAt : '';
+    verificarSesionGuardada();
+    await actualizarEstadoEnvios();
+    if (navigator.onLine) {
+        intentarEnviarYa();
+        descargarHistorialRemoto();
+    }
+    return db;
+});
+dbReady.catch(error => {
+    console.error('Error de base local', error);
+    mostrarAlerta('No se pudo abrir el almacenamiento local. No cierre ni borre los datos de la app.');
+});
 
 // PERSISTENCIA DE SESIÓN
 function verificarSesionGuardada() {
@@ -181,6 +199,7 @@ function verificarSesionGuardada() {
             idDispenserInput.style.backgroundColor = "#e9ecef";
             document.getElementById('fechaMantenimiento').valueAsDate = new Date();
             showScreen('mantenimientoScreen');
+            precargarMaquina();
         } else {
             showScreen('optionsScreen');
         }
@@ -201,13 +220,82 @@ function actualizarCamposTecnico() {
 // DESCARGAR HISTORIAL DESDE GOOGLE SHEET
 async function descargarHistorialRemoto() {
     if (!navigator.onLine) return;
-    try {
-        const response = await fetch(APPS_SCRIPT_WEB_APP_URL + "?action=read");
-        const json = await response.json();
-        if (json && json.data) {
-            datosRemotos = json.data;
+    if (remoteDownload) return remoteDownload;
+    remoteDownload = (async () => {
+        try {
+            const cache = await SuraguaData.download(db);
+            datosRemotos = cache.data;
+            ultimaSincronizacion = cache.updatedAt;
+            remoteDownloadedAt = Date.now();
+            remoteDownloadFailed = false;
+        } catch (e) {
+            remoteDownloadFailed = true;
+            console.error("Error al descargar historial", e);
+            document.getElementById('machineStatus').textContent = 'No se pudo actualizar el historial. Se usaran los datos guardados en este dispositivo.';
+        } finally {
+            remoteDownload = null;
         }
-    } catch (e) { console.error("Error al descargar historial", e); }
+    })();
+    return remoteDownload;
+}
+
+function normalizarId(id) { return String(id || '').trim(); }
+
+function combinarHistorial(local) {
+    const ids = new Set();
+    return [...local, ...datosRemotos].filter(registro => {
+        if (!registro.idReportes) return true;
+        if (ids.has(registro.idReportes)) return false;
+        ids.add(registro.idReportes);
+        return true;
+    });
+}
+
+async function precargarMaquina(actualizarRemoto = true) {
+    const lookup = ++machineLookup;
+    const id = normalizarId(idDispenserInput.value);
+    const details = document.getElementById('ultimoMantenimiento');
+    const status = document.getElementById('machineStatus');
+    details.hidden = true;
+    details.open = false;
+    document.getElementById('lugarDispenser').value = '';
+    document.getElementById('sectorDispenser').value = '';
+    status.textContent = id ? 'Buscando datos guardados...' : '';
+    if (!id) return;
+    try {
+        await dbReady;
+        const local = await SuraguaData.all(db, 'historial');
+        if (lookup !== machineLookup || id !== normalizarId(idDispenserInput.value)) return;
+        const registros = ordenarPorFechaDesc([...local, ...datosRemotos].filter(r =>
+            r.sheet === 'Mantenimiento' && normalizarId(r.idDispenser) === id));
+        const ultimo = registros[0];
+        const referencia = ultimaSincronizacion
+            ? ' Historial descargado: ' + new Date(ultimaSincronizacion).toLocaleString()
+            : ' Sin historial remoto descargado.';
+        status.textContent = (navigator.onLine ? '' : 'Sin conexion. ') +
+            (remoteDownloadFailed ? 'No se pudo actualizar el historial. ' : '') +
+            (ultimo ? 'Datos guardados de esta maquina.' : 'Sin datos guardados para este ID; complete la ubicacion y el sector.') + referencia;
+        if (ultimo) {
+            document.getElementById('lugarDispenser').value = ultimo.lugarDispenser || '';
+            document.getElementById('sectorDispenser').value = ultimo.sectorDispenser || '';
+            document.getElementById('ultimoMantenimientoInfo').textContent =
+                `Fecha: ${ultimo.fechaMantenimiento || ultimo.fechaCarga}\nTecnico: ${ultimo.tecnico || '-'}\nUbicacion: ${ultimo.lugarDispenser || '-'}\nSector: ${ultimo.sectorDispenser || '-'}\nObservaciones: ${ultimo.observacionesMantenimiento || 'Sin observaciones'}`;
+            details.hidden = false;
+        }
+        if (actualizarRemoto && navigator.onLine && Date.now() - remoteDownloadedAt > 30000) {
+            await descargarHistorialRemoto();
+            if (lookup === machineLookup) await precargarMaquina(false);
+        }
+    } catch (error) {
+        console.error(error);
+        status.textContent = 'No se pudieron consultar los datos locales de la maquina.';
+    }
+}
+idDispenserInput.addEventListener('input', () => {
+    precargarMaquina();
+});
+for (const id of ['lugarDispenser', 'sectorDispenser']) {
+    document.getElementById(id).addEventListener('input', () => { ++machineLookup; });
 }
 
 // Alerta Personalizada
@@ -226,40 +314,59 @@ function showScreen(id) {
 // Envío Inmediato
 async function intentarEnviarYa() {
     if (!navigator.onLine || !db) return;
-    
-    const tx = db.transaction('pendientes', 'readwrite');
-    const store = tx.objectStore('pendientes');
-    const registros = await new Promise(res => {
-        const req = store.getAll();
-        const keysReq = store.getAllKeys();
-        req.onsuccess = () => keysReq.onsuccess = () => res(req.result.map((d, i) => ({ k: keysReq.result[i], d })));
-    });
+    let errorMessage = '';
+    try {
+        await SuraguaData.sync(db);
+    } catch (error) {
+        console.error(error);
+        errorMessage = ' No se pudo confirmar el envio: ' + error.message;
+        await registrarReintento();
+    }
+    await actualizarEstadoEnvios(errorMessage);
+}
 
-    for (let reg of registros) {
-        const formData = new FormData();
-        for (const key in reg.d) formData.append(key, reg.d[key]);
+async function registrarReintento() {
+    if (!USE_SERVICE_WORKER_SYNC) return;
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        await reg.sync.register('sync-datos');
+    } catch (error) { console.error('No se pudo programar el reintento', error); }
+}
 
-        try {
-            await fetch(APPS_SCRIPT_WEB_APP_URL, { method: 'POST', body: formData, mode: 'no-cors' });
-            const delTx = db.transaction('pendientes', 'readwrite');
-            await delTx.objectStore('pendientes').delete(reg.k);
-            console.log("Sincronizado con éxito");
-        } catch (e) {
-            console.error("Fallo de envío inmediato", e);
-        }
+async function actualizarEstadoEnvios(errorMessage = '') {
+    try {
+        const pendientes = await SuraguaData.all(db, 'pendientes');
+        document.getElementById('syncStatus').textContent = pendientes.length
+            ? `${pendientes.length} reporte(s) guardado(s) en dispositivo, pendiente(s) de confirmacion en Google Sheets.${errorMessage}`
+            : 'Sin reportes pendientes. Los reportes con ID enviados fueron confirmados en Google Sheets.';
+    } catch (error) {
+        console.error(error);
+        document.getElementById('syncStatus').textContent = 'No se pudo consultar el estado de los envios.';
     }
 }
+document.getElementById('btnSync').onclick = () => {
+    if (!navigator.onLine) {
+        mostrarAlerta('Sin conexion. Los reportes siguen guardados en este dispositivo.');
+        return;
+    }
+    intentarEnviarYa();
+};
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data.type === 'sync-updated' && db) actualizarEstadoEnvios();
+    });
+}
+setInterval(() => { if (db && navigator.onLine) intentarEnviarYa(); }, 30000);
 
 // Historial Diario - ACTUALIZADO PARA MOSTRAR DATOS COMPLETOS
 async function renderHistorialDiario() {
     const list = document.getElementById('historyList');
     list.innerHTML = '<div style="text-align:center; padding:20px;">Cargando historial...</div>';
     
-    const tx = db.transaction('historial', 'readonly');
-    const local = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
+    const local = await SuraguaData.all(db, 'historial');
     
     const hoy = new Date().toISOString().split('T')[0];
-    const combinados = [...local, ...datosRemotos];
+    const combinados = combinarHistorial(local);
     
     // Filtrar por los que tengan fecha de hoy
     const filtrados = combinados.filter(r => (r.fechaMantenimiento || r.fechaCarga || "").includes(hoy));
@@ -316,9 +423,8 @@ async function renderHistorialMaquinas(busqueda = '') {
     const list = document.getElementById('maquinasList');
     if (!busqueda) { list.innerHTML = 'Ingresa un ID para buscar...'; return; }
     
-    const tx = db.transaction('historial', 'readonly');
-    const local = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
-    const combinados = [...local, ...datosRemotos];
+    const local = await SuraguaData.all(db, 'historial');
+    const combinados = combinarHistorial(local);
     
     // Filtro estricto por ID
     const filtrados = combinados.filter(r => 
@@ -360,6 +466,7 @@ document.getElementById('loginForm').onsubmit = (e) => {
             idDispenserInput.style.backgroundColor = "#e9ecef";
             document.getElementById('fechaMantenimiento').valueAsDate = new Date();
             showScreen('mantenimientoScreen');
+            precargarMaquina();
         } else {
             showScreen('optionsScreen');
         }
@@ -375,7 +482,8 @@ document.getElementById('searchMaquina').oninput = (e) => renderHistorialMaquina
 document.getElementById('backFromHistory').onclick = () => showScreen('optionsScreen');
 document.getElementById('backFromMaquinas').onclick = () => showScreen('optionsScreen');
 document.getElementById('btnLogout').onclick = () => {
-    localStorage.clear();
+    localStorage.removeItem('suragua_user');
+    localStorage.removeItem('suragua_pass');
     location.href = location.pathname;
 };
 
@@ -386,6 +494,7 @@ document.getElementById('btnMantenimiento').onclick = () => {
     idDispenserInput.style.backgroundColor = "#ffffff";
     document.getElementById('fechaMantenimiento').valueAsDate = new Date();
     showScreen('mantenimientoScreen');
+    precargarMaquina();
 };
 document.getElementById('btnBidones').onclick = () => { document.getElementById('bidonesForm').reset(); showScreen('bidonesScreen'); };
 document.getElementById('backToOptionsFromBidones').onclick = () => showScreen('optionsScreen');
@@ -396,49 +505,51 @@ document.getElementById('mantenimientoForm').onsubmit = async (e) => {
     e.preventDefault();
     const btn = e.target.querySelector('button[type="submit"]');
     if(btn.disabled) return; 
-
-    const id = idDispenserInput.value;
-    const fechaActual = document.getElementById('fechaMantenimiento').value;
-    
-    // Validación 10 días
-    const tx = db.transaction('historial', 'readonly');
-    const local = await new Promise(res => { tx.objectStore('historial').getAll().onsuccess = (e) => res(e.target.result); });
-    const combinados = [...local, ...datosRemotos];
-    const fechaActualDate = parseFechaMantenimiento(fechaActual);
-    const duplicado = combinados.find(r => {
-        if (r.sheet === 'Mantenimiento' && r.idDispenser.toString() === id.toString()) {
-            const fechaRegistro = parseFechaMantenimiento(r.fechaMantenimiento);
-            if (!fechaRegistro || !fechaActualDate) return false;
-            const diff = (fechaActualDate - fechaRegistro) / (1000*60*60*24);
-            return diff >= 0 && diff < 10;
+    btn.disabled = true;
+    try {
+        await dbReady;
+        const id = normalizarId(idDispenserInput.value);
+        const fechaActual = document.getElementById('fechaMantenimiento').value;
+        const local = await SuraguaData.all(db, 'historial');
+        const combinados = combinarHistorial(local);
+        const fechaActualDate = parseFechaMantenimiento(fechaActual);
+        const duplicado = combinados.find(r => {
+            if (r.sheet === 'Mantenimiento' && normalizarId(r.idDispenser) === id) {
+                const fechaRegistro = parseFechaMantenimiento(r.fechaMantenimiento);
+                if (!fechaRegistro || !fechaActualDate) return false;
+                const diff = (fechaActualDate - fechaRegistro) / (1000*60*60*24);
+                return diff >= 0 && diff < 10;
+            }
+            return false;
+        });
+        if (duplicado) {
+            mostrarAlerta(`La máquina ${id} ya fue cargada el ${duplicado.fechaMantenimiento}.`);
+            return;
         }
-        return false;
-    });
-
-    if(duplicado) { mostrarAlerta(`La máquina ${id} ya fue cargada el ${duplicado.fechaMantenimiento}.`); return; }
-
-    btn.disabled = true; // BLOQUEO PARA GOOGLE SHEET
-    btn.innerText = "Guardando...";
-
-    const datos = {
-        sheet: 'Mantenimiento',
-        usuario: document.getElementById('usuarioMantenimiento') ? document.getElementById('usuarioMantenimiento').value : 'TOYOTA',
-        tecnico: loggedInUser,
-        idDispenser: id,
-        fechaMantenimiento: fechaActual,
-        lugarDispenser: document.getElementById('lugarDispenser').value,
-        sectorDispenser: document.getElementById('sectorDispenser').value,
-        observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value,
-        deviceId: currentDeviceId,
-        dispositivo: getDeviceInfo(),
-        ip: currentIp
-    };
-
-    await guardarLocal(datos);
-    mostrarAlerta("Guardado correctamente.");
-    btn.disabled = false;
-    btn.innerText = "Guardar Datos Mantenimiento";
-    showScreen('optionsScreen');
+        btn.innerText = "Guardando...";
+        const datos = {
+            sheet: 'Mantenimiento',
+            usuario: document.getElementById('usuarioMantenimiento').value,
+            tecnico: loggedInUser,
+            idDispenser: id,
+            fechaMantenimiento: fechaActual,
+            lugarDispenser: document.getElementById('lugarDispenser').value,
+            sectorDispenser: document.getElementById('sectorDispenser').value,
+            observacionesMantenimiento: document.getElementById('observacionesMantenimiento').value,
+            deviceId: currentDeviceId,
+            dispositivo: getDeviceInfo(),
+            ip: currentIp
+        };
+        await guardarLocal(datos);
+        mostrarAlerta("Guardado en este dispositivo. Consulte el estado de envio para confirmar su llegada a Google Sheets.");
+        showScreen('optionsScreen');
+    } catch (error) {
+        console.error(error);
+        mostrarAlerta('No se pudo guardar el mantenimiento en el dispositivo. No cierre el formulario e intente nuevamente.');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "Guardar Datos Mantenimiento";
+    }
 };
 
 document.getElementById('bidonesForm').onsubmit = async (e) => {
@@ -447,22 +558,31 @@ document.getElementById('bidonesForm').onsubmit = async (e) => {
     if(btn.disabled) return;
     btn.disabled = true;
     btn.innerText = "Guardando...";
-
-    const datos = {
-        sheet: 'Entregas', usuario: loggedInUser,
-        cantidadEntregados: document.getElementById('cantidadEntregados').value,
-        vaciosRetirados: document.getElementById('vaciosRetirados').value,
-        lugar: document.getElementById('lugar').value,
-        sector: document.getElementById('sector').value,
-        observaciones: document.getElementById('observacionesBidones').value
-    };
-    await guardarLocal(datos);
-    btn.disabled = false;
-    btn.innerText = "Guardar Datos Bidones";
-    showScreen('optionsScreen');
+    try {
+        await dbReady;
+        const datos = {
+            sheet: 'Entregas', usuario: loggedInUser,
+            cantidadEntregados: document.getElementById('cantidadEntregados').value,
+            vaciosRetirados: document.getElementById('vaciosRetirados').value,
+            lugar: document.getElementById('lugar').value,
+            sector: document.getElementById('sector').value,
+            observaciones: document.getElementById('observacionesBidones').value
+        };
+        await guardarLocal(datos);
+        mostrarAlerta('Guardado en este dispositivo. Consulte el estado de envio.');
+        showScreen('optionsScreen');
+    } catch (error) {
+        console.error(error);
+        mostrarAlerta('No se pudo guardar la entrega en el dispositivo. Intente nuevamente sin cerrar el formulario.');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "Guardar Datos Bidones";
+    }
 };
 
 async function guardarLocal(datos) {
+    datos.idReportes = crypto.randomUUID();
+    datos.fechaCarga = new Date().toISOString();
     const tx = db.transaction(['pendientes', 'historial'], 'readwrite');
     tx.objectStore('pendientes').add(datos);
     tx.objectStore('historial').add(datos);
@@ -472,11 +592,16 @@ async function guardarLocal(datos) {
         tx.onabort = () => reject(tx.error);
     });
     
+    await actualizarEstadoEnvios();
     if (navigator.onLine) {
         intentarEnviarYa();
     } else if (USE_SERVICE_WORKER_SYNC) {
-        const reg = await navigator.serviceWorker.ready;
-        reg.sync.register('sync-datos');
+        registrarReintento();
     }
 }
-window.addEventListener('online', intentarEnviarYa);
+window.addEventListener('online', () => {
+    if (!db) return;
+    intentarEnviarYa();
+    descargarHistorialRemoto();
+});
+window.addEventListener('offline', () => { if (db) actualizarEstadoEnvios(); });

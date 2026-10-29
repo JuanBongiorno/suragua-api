@@ -1,54 +1,33 @@
-const CACHE_NAME = 'suragua-v204'; // Fuerza actualización
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyUWgnLwIgXV-aKysdwH_4n9Z0SwekLYzGlk1GISiAHc6L8_Y78_0CmHRe2m1Xo1t-6/exec';
-const ASSETS = ['./', './index.html', './style.css', './script.js', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png'];
+importScripts('./data.js?v=206');
+const CACHE_NAME = 'suragua-v206';
+const ASSETS = ['./', './index.html', './manifest.json', './style.css?v=201', './data.js?v=206', './script.js?v=205', './assets/img/fondo13.png', './assets/img/freepik__upload__37400.png', './assets/img/fono34.png.png'];
 
-self.addEventListener('install', (e) => {
-    e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
-    self.skipWaiting();
+self.addEventListener('install', event => {
+    event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
-
-self.addEventListener('activate', (e) => {
-    e.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => k !== CACHE_NAME && caches.delete(k)))));
-    self.clients.claim();
+self.addEventListener('activate', event => {
+    event.waitUntil(caches.keys().then(keys => Promise.all(
+        keys.filter(key => key.startsWith('suragua-') && key !== CACHE_NAME).map(key => caches.delete(key))
+    )).then(() => self.clients.claim()));
 });
-
-self.addEventListener('fetch', (e) => {
-    e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
+self.addEventListener('fetch', event => {
+    const url = new URL(event.request.url);
+    if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
+    event.respondWith(caches.match(event.request).then(cached =>
+        cached || (event.request.mode === 'navigate'
+            ? fetch(event.request).catch(() => caches.match('./index.html'))
+            : fetch(event.request))));
 });
-
-self.addEventListener('sync', (event) => {
-    if (event.tag === 'sync-datos') {
-        event.waitUntil(enviarTodoYa());
-    }
-});
-
-async function enviarTodoYa() {
-    const db = await new Promise(resolve => {
-        const req = indexedDB.open('SuraguaDB', 2); // Versión 2 obligatoria
-        req.onsuccess = () => resolve(req.result);
-    });
-
-    const tx = db.transaction('pendientes', 'readonly');
-    const store = tx.objectStore('pendientes');
-    const registros = await new Promise(res => {
-        const r = store.getAll();
-        r.onsuccess = () => res(r.result);
-    });
-    const keys = await new Promise(res => {
-        const k = store.getAllKeys();
-        k.onsuccess = () => res(k.result);
-    });
-
-    return Promise.all(registros.map(async (data, i) => {
-        const formData = new FormData();
-        for (const key in data) formData.append(key, data[key]);
+self.addEventListener('sync', event => {
+    if (event.tag !== 'sync-datos') return;
+    event.waitUntil((async () => {
+        const db = await SuraguaData.open();
         try {
-            await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData, mode: 'no-cors' });
-            const delTx = db.transaction('pendientes', 'readwrite');
-            await delTx.objectStore('pendientes').delete(keys[i]);
-        } catch (err) {
-            console.error("Fondo falló", err);
-            throw err; 
+            await SuraguaData.sync(db);
+        } finally {
+            db.close();
+            const clients = await self.clients.matchAll();
+            clients.forEach(client => client.postMessage({ type: 'sync-updated' }));
         }
-    }));
-}
+    })());
+});

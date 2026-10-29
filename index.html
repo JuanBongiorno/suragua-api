@@ -21,6 +21,8 @@
     <div class="container">
         <img src="./assets/img/fondo13.png" alt="SuraguaLogo" class="logo">
         <h1>Bienvenido a Suragua</h1>
+        <p id="syncStatus" role="status" aria-live="polite">Consultando reportes pendientes...</p>
+        <button type="button" id="btnSync" class="btn-secondary">Reintentar envios</button>
 
         <!-- Login -->
         <div id="loginScreen" class="screen active">
@@ -98,6 +100,11 @@
                 <div class="input-group">
                     <label for="idDispenser">ID del Dispensador:</label>
                     <input type="text" id="idDispenser" required>
+                    <p id="machineStatus" role="status" aria-live="polite"></p>
+                    <details id="ultimoMantenimiento" hidden>
+                        <summary>Ver ultimo mantenimiento</summary>
+                        <p id="ultimoMantenimientoInfo" style="white-space: pre-line; text-align: left;"></p>
+                    </details>
                 </div>
                 <div class="input-group">
                     <label for="fechaMantenimiento">Fecha del Mantenimiento:</label>
@@ -138,6 +145,7 @@
             <button type="button" class="btn-secondary" id="backFromMaquinas">Volver</button>
         </div>
     </div>
-    <script src="script.js?v=204"></script>
+    <script src="data.js?v=206"></script>
+    <script src="script.js?v=205"></script>
 </body>
 </html>
