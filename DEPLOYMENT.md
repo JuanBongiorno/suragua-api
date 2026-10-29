@@ -12,6 +12,10 @@
 6. Cerrar otras pestanas de la app y volver a abrirla conectado para descargar
    la nueva version y el historial antes de salir sin conexion.
 
+La consulta de historial requiere solo `Mantenimiento`, igual que la version
+anterior. `Entregas` se necesita unicamente si se utiliza la carga de bidones;
+si no existe, esos envios quedan pendientes y muestran un error de confirmacion.
+
 La app conserva pendientes hasta verificar el ID en Sheets mediante
 `action=status`. Si el servidor no esta actualizado, muestra un error y
 mantiene los pendientes; no debe interpretarse como confirmacion.

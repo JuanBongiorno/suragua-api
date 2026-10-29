@@ -87,7 +87,7 @@ function doGet(e) {
     }
     if (p.action !== 'read') throw new Error('Accion invalida');
     var data = [];
-    ['Mantenimiento', 'Entregas'].forEach(function(nombre) {
+    ['Mantenimiento'].forEach(function(nombre) {
       var values = hojaReporte(nombre).getDataRange().getDisplayValues();
       for (var i = 1; i < values.length; i++) {
         var r = values[i];

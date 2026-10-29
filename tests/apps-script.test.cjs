@@ -76,3 +76,12 @@ test('occupied delivery ID column is not overwritten', () => {
     assert.equal(rows.Entregas.length, 1);
     assert.equal(rows.Entregas[0][7], 'Otra columna');
 });
+test('maintenance history does not require a deliveries sheet', () => {
+    const { context: c, rows } = server();
+    delete rows.Entregas;
+    assert.equal(c.doPost({ parameter: report }).ok, true);
+    const response = c.doGet({ parameter: { action: 'read' } });
+    assert.equal(response.error, undefined);
+    assert.equal(response.data.length, 1);
+    assert.equal(response.data[0].idReportes, report.idReportes);
+});
